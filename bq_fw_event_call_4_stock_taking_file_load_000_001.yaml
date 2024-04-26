@@ -1,0 +1,198 @@
+# -- bq_fw_event_call_4_stock_taking_file_load_000_001 -----------------------------------------
+# -- the Google workflows called by the file load finished event
+# -- In terraform you need to escape the $$ or it will cause errors.
+
+main:
+  params: [event]
+  steps:
+    - read_runtime_args:
+        # Check runtime arguments
+        switch:
+          - condition: ${  "data"   in event
+                       and "bucket" in event["data"]
+                       and "name"   in event["data"] }
+            assign:
+              - gwf_file_to_load_bucket_name    : ${event.data.bucket}
+              - gwf_file_to_load_file_name      : ${event.data.name  }                                                  ## gcp_1_0_ds_log_inv_required_outlets_2022-06-30_2022-11-16b17s52s51.csv.gz
+
+            next: extract_all_needed_workflow_vars_4_loading_the_stocktaking_file
+
+          - condition: true
+            return:
+                - ret_stat :  "abortion"
+                - ret_code :  9990
+                - ret_msg  :  "Abortion due WRONG INPUT PARAMS in gwf module bq_fw_event_call_4_stock_taking_file_load_000_001! (Params: event, event.data.bucket, event.data.name )."
+                - ret_json :  "[]"
+
+  # Extract all needed workflow vars for loading the extracted stocktaking  file
+    - extract_all_needed_workflow_vars_4_loading_the_stocktaking_file:
+        assign:                                                                                                            
+          - file_rest                       : ${text.replace_all_regex(gwf_file_to_load_file_name, "^gcp_", "")  }                  ## 1_0_ds_log_inv_required_outlets_2024-02-15_2024-02-16_3924-03-22b18s17s52.csv.gz
+          - file_rest                       : ${text.replace_all_regex(file_rest, ".csv.gz$$", "" )    }                            ## 1_0_ds_log_inv_required_outlets_2024-02-15_2024-02-16_3924-03-22b18s17s52
+          - match_file_ts                   : ${text.find_all_regex(file_rest, "[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}b[[:digit:]]{2}s[[:digit:]]{2}s[[:digit:]]{2}" )  }
+          - file_ts_org                     : ${match_file_ts[ 0 ][ "match" ] }
+          - file_rest                       : ${text.replace_all_regex(file_rest, "_" + file_ts_org, "" ) }                         ## 1_0_ds_log_inv_required_outlets_2024-02-15_2024-02-16
+          - gwf_load_external_prepare_ts    : ${text.replace_all_regex(file_ts_org, "b", " " )    }
+          - gwf_load_external_prepare_ts    : ${text.replace_all_regex(gwf_load_external_prepare_ts, "s", ":" )    }                ## 3924-03-22 18:17:52
+          - match_date                      : ${text.find_all_regex(file_rest, "[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}" )  }
+          - eob_date_id                     : ${match_date[ 0 ][ "match" ] }
+          - ref_date_id                     : ${match_date[ 1 ][ "match" ] }
+          - file_rest                       : ${text.replace_all_regex(file_rest, "_" + eob_date_id + "_" + ref_date_id , "" )    } ## 1_0_ds_log_inv_required_outlets
+          - match_digits                    : ${text.find_all_regex(file_rest, "[[:digit:]]+" )  }
+          - gwf_load_external_datasource_id : ${match_digits[ 0 ][ "match" ] }
+          - gwf_load_external_prepare_id    : ${match_digits[ 1 ][ "match" ] }
+          - file_rest                       : ${text.replace_all_regex(file_rest, "^" + gwf_load_external_datasource_id + "_", "" ) }   
+          - file_rest                       : ${text.replace_all_regex(file_rest, "^" + gwf_load_external_prepare_id    + "_", "" ) }   
+          - gwf_step_load_entity_name       : ${file_rest}                                                                          ## ds_log_inv_required_outlets 
+                                            
+          - map_bqfw_info                                                     : { }
+          - map_bqfw_info    ["gwf_process_id"                              ] : 100
+          - map_bqfw_info    ["gwf_topic"                                   ] : ${gwf_step_load_entity_name}
+          - map_bqfw_info    ["gwf_todo_entity_list_type"                   ] : "load"
+          - map_bqfw_info    ["gwf_todo_entity_list_version"                ] : "000_001"
+          - map_bqfw_info    ["eob_date_id"                                 ] : ${eob_date_id}
+          - map_bqfw_info    ["date_params_ref_date_id"                     ] : ${eob_date_id}
+          - map_bqfw_info    ["date_params_field_name_for_task_period_value"] : "ref_date_id"
+          - map_bqfw_info    ["ref_date_id"                                 ] : ${ref_date_id}
+          - map_bqfw_info    ["outlet_id_list"                              ] : "all"
+          - map_bqfw_info    ["process_renew_or_continue"                   ] : "new"
+          - map_bqfw_info    ["gwf_renew_or_continue"                       ] : "new"
+          - map_bqfw_info    ["log_level"                                   ] : "ERROR"
+          
+          - map_specific_info                                                 : { }
+          - map_specific_info["specific_info_for"                           ] : "load_external_data"
+          - map_specific_info["gwf_file_to_load_bucket_name"                ] : ${gwf_file_to_load_bucket_name}
+          - map_specific_info["gwf_file_to_load_file_name"                  ] : ${gwf_file_to_load_file_name}
+          - map_specific_info["gwf_load_external_datasource_id"             ] : ${gwf_load_external_datasource_id}
+          - map_specific_info["gwf_load_external_prepare_id"                ] : ${gwf_load_external_prepare_id}
+          - map_specific_info["gwf_load_external_prepare_ts"                ] : ${gwf_load_external_prepare_ts}
+          - map_specific_info["gwf_load_external_prepare_date"              ] : ${text.substring(gwf_load_external_prepare_ts, 0, 10)}
+          - map_specific_info["gwf_step_load_entity_name"                   ] : ${gwf_step_load_entity_name}
+
+
+    # System Variables
+    - sys_map_assignments:
+        assign:
+          - map_sys                               : { }
+          - map_sys["§GOOGLE_CLOUD_LOCATION§"   ] : ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
+          - map_sys["§GOOGLE_CLOUD_PROJECT_ID§" ] : ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"] : ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_ID")}
+
+    # Other Variables
+    - ohter_assignments:
+        assign:
+          - res_gwf : { }
+
+    - try_to_execute_gwf:
+        try:
+            call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+            args:
+                workflow_id        : "bq_fw_main_wf_ctrl_000_001"
+                location           : ${map_sys["§GOOGLE_CLOUD_LOCATION§"  ]}
+                project_id         : ${map_sys["§GOOGLE_CLOUD_PROJECT_ID§"]}
+                argument: 
+                  bqfw_info        : ${ map_bqfw_info }
+                  specific_info    : ${ map_specific_info }
+            result: res_gwf
+        except:
+            as: e
+            steps:
+                - extract_map_info_from_call_main_wf_ctrl_exception_010:
+                    assign:
+                      - map_e      : ${catch_exception_e(e)}
+                - return_call_main_wf_ctrl_with_errors:
+                    return:
+                        - ret_stat :  "abortion"
+                        - ret_code :  ${ map_e["code"]   }
+                        - ret_msg  : '${ "gwf_call:bq_fw_main_wf_ctrl_000_001: " + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                        - ret_json :  ${ map.merge_nested(map.merge_nested(e, map_bqfw_info), map_specific_info ) }
+
+    - check_on_bqfw_execute_bq_query_error:
+        switch:
+          # check for execution errors
+          - condition: ${  res_gwf[1].ret_code > 0 }
+            steps:
+                - if_error_4_main_wf_ctrl_stop:
+                    return:
+                        - ret_stat :  "error"
+                        - ret_code :  ${ res_gwf[1].ret_code  }
+                        - ret_msg  : '${ "bq_fw_check_wf_init_000_001: gwf_call:bq_fw_main_wf_ctrl_000_001 \n" + res_gwf[1].ret_msg  }'
+                        - ret_json :  ${ res_gwf[3].ret_json }
+
+    #---- step  returnOutput -----------------------------------------------------------------------------------------------------------
+    - returnOutput:
+        return:
+            - ret_stat :  "succeeded"
+            - ret_code :  0
+            - ret_msg  : '${ map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"] + " successfully completed :-) " }'
+            - ret_json :  ${ res_gwf[3].ret_json }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  catch_exception_e
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+catch_exception_e:
+    params: [ e ]
+    steps:
+    - init_list_map_values:
+        assign:
+          - map_e                  : {}
+          - map_e["code"         ] : 999    # unknown error code
+          - map_e["message"      ] : ""
+          - map_e["error_message"] : ""
+          - map_e["tags"         ] : []
+
+    - check_if_code_in_exception_e:
+        switch:
+          - condition:   ${ "code" in e }
+            assign:
+              - map_e["code"]    : ${e.code}
+
+    - check_if_tags_in_exception_e:
+        switch:
+          - condition:   ${ "tags" in e }
+            assign:
+              - map_e["tags"]    : ${e.tags}
+
+    - check_if_message_in_exception_e:
+        switch:
+          - condition:   ${ "message" in e }
+            assign:
+              - map_e["message"] : ${map_e["message"] + e.message}
+
+    - check_if_body_in_exception_e:
+        switch:
+          - condition:   ${ "body" in e }
+            switch:
+              - condition:   ${ "error" in e.body }
+                switch:
+                  - condition:   ${ "message" in e.body.error }
+                    assign:
+                      - map_e["message"] : ${map_e["message"] + e.body.error.message}
+
+    - check_if_operation_in_exception_e:
+        switch:
+          - condition:   ${ "operation" in e }
+            switch:
+              - condition:   ${ "error" in e.operation }
+                switch:
+                  - condition:   ${ "context" in e.operation.error and "payload" in e.operation.error }
+                    assign:
+                      - map_e["error_message"] : ${map_e["error_message"] + e.operation.error.payload + "\n    \n" + e.operation.error.context }
+
+    - check_if_message_empty:
+        switch:
+          - condition:   ${ map_e["message"] == "" }
+            assign:
+              - map_e["message"]       : "Unknown exception message structure. See exception."
+
+    - check_if_error_message_empty:
+        switch:
+          - condition:   ${ map_e["error_message"] == "" }
+            assign:
+              - map_e["error_messageerror_message"]       : "Unknown exception message structure. See exception."
+
+
+    - returnResult:
+        return: ${map_e}
+
+

@@ -1,0 +1,828 @@
+# -- bq_fw_exec_1_def_app_step_000_001 -----------------------------------------
+# -- bq framework - execute just one gwf step defined in the table t_600_log_gwf_job_executions
+# -- §META_CURRENT_GCP_PROJECT§.§META_CURRENT_METADATA_GWF_CTRL_DATASET§.t_600_log_gwf_job_executions
+# -- Module is called from bq_fw_exec_all_app_steps_000_001
+# -- In terraform you need to escape the $$ or it will cause errors.
+
+main:
+  params: [args]
+  steps:
+    - read_runtime_args:
+        # Check runtime arguments
+        switch:
+          - condition: ${  "gwf_step_id"   in args
+                       and "last_step_id"  in args
+                       and "par_map"       in args
+                       and "bqfw_info"     in args
+                       and "init_info"     in args
+                       and "specific_info" in args }
+            assign:
+              - par_map                         : ${args.par_map                            }
+              - map_t600_ini                    : ${args.par_map                            }
+              - map_bqfw_info                   : ${args.bqfw_info                          }
+              - map_init_info                   : ${args.init_info                          }
+              - map_specific_info               : ${args.specific_info                      }
+              - map_t600_ini["§gwf_step_id§"  ] : ${string(args.gwf_step_id)                }
+              - is_last_step                    : ${args.gwf_step_id == args.last_step_id   }
+              - par_map["idx_definitions_list"] : ${args.gwf_step_id                        }
+
+            next: sys_map_assignments
+
+          - condition: true
+            return:
+                - ret_stat :  "abortion"
+                - ret_code :  9990
+                - ret_msg  :  "Abortion due WRONG INPUT PARAMS in gwf bq_fw_exec_1_def_app_step_000_001! (Params: par_map, bqfw_info, init_info, specific_info )."
+                - ret_json :  "[]"
+
+
+    # System Variables
+    - sys_map_assignments:
+        assign:
+          - map_sys: { }
+          - map_sys["§GOOGLE_CLOUD_LOCATION§"             ] : ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
+          - map_sys["§GOOGLE_CLOUD_PROJECT_ID§"           ] : ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - map_sys["§GOOGLE_CLOUD_PROJECT_NUMBER§"       ] : ${sys.get_env("GOOGLE_CLOUD_PROJECT_NUMBER")}
+          - map_sys["§GOOGLE_CLOUD_SERVICE_ACCOUNT_NAME§" ] : ${sys.get_env("GOOGLE_CLOUD_SERVICE_ACCOUNT_NAME")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID§"] : ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"          ] : ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_ID")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_REVISION_ID§" ] : ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_REVISION_ID")}
+          - map_sys["§GOOGLE_CLOUD_LOCATION_CONTINENT§"   ] : "EU"
+
+    - init_sub_get_all_steps_to_be_executed:
+        assign:
+          - map_t600_ini["only_steps"                     ] :  false
+
+    - try_to_exec_mng_app_exec_log_tab_get_select_4_worfklows_steps_definitions:
+        try:
+            call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+            args:
+                workflow_id      : "bq_fw_mng_app_exec_log_tab_000_001"
+                location         : ${map_sys["§GOOGLE_CLOUD_LOCATION§"     ]}
+                project_id       : ${map_sys["§GOOGLE_CLOUD_PROJECT_ID§"   ]}
+                argument         :
+                  ask_for        : "get_select_4_worfklows_steps_definitions"
+                  par_map        : ${map_t600_ini      }
+            result: map_tabs_and_select
+        except:
+            as: e
+            steps:
+                - assignments_exception_in_mng_app_exec_log_tab_get_select_4_worfklows_steps_definitions:
+                    assign:
+                      - map_e                                      :  ${catch_exception_e(e)}
+                      - map_t600_ini["§gwf_400_last_return_code§"] :  ${map_e["code"]       }
+                      - map_t600_ini["§gwf_400_error_message§"   ] : '${"gwf_call:bq_fw_mng_app_exec_log_tab_000_001;ask_for:get_select_4_worfklows_steps_definitions:\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                      - map_t600_ini["§process_400_phase_id§"    ] :  0
+                      - map_t600_ini["§process_400_phase_name§"  ] :  "executions aborted"
+                      - map_t600_ini["§gwf_400_status_id§"       ] :  100
+                      - map_t600_ini["§gwf_400_status_name§"     ] :  "executions abortion due exception error"
+                      - o_log_ret                                  :  ${ sub_log_steering_log_info( map_t600_ini, map_bqfw_info, map_init_info, map_specific_info ) }
+                - return__exception_in_mng_app_exec_log_tab_get_select_4_worfklows_steps_definitions:
+                    return:
+                        - ret_stat :  "abortion"
+                        - ret_code :  ${map_e["code"] }
+                        - ret_msg  : '${map_t600_ini["§gwf_400_error_message§"]}'
+                        - ret_json :  ${e}
+
+    - ohter_assignments_002:
+        assign:
+          - log_table_name_src                                        : ${map_tabs_and_select[0].log_table_name_src}
+          - log_table_name_trg                                        : ${map_tabs_and_select[1].log_table_name_trg}
+          - sql_select_t500_definitions                               : ${map_tabs_and_select[2].sel_sql           }
+
+    - try_to_exec_bqfw_execute_bq_query_4_definitions:
+        try:
+            call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+            args:
+                workflow_id      : "bq_fw_exec_bq_log_read_000_001"
+                location         : ${map_t600_ini["§GOOGLE_CLOUD_LOCATION§"                 ]}
+                project_id       : ${map_t600_ini["§GOOGLE_CLOUD_PROJECT_ID§"               ]}
+                argument         :
+                  project_id     : ${map_t600_ini["§GOOGLE_CLOUD_PROJECT_ID§"               ]}
+                  dataset_id     : ${map_t600_ini["§META_CURRENT_METADATA_GWF_CTRL_DATASET§"]}
+                  location_id    : "EU"
+                  operation_type : "select"
+                  bq_entity_name : ${log_table_name_src                                      }
+                  query_string   : ${sql_select_t500_definitions                             }
+            result: bq_run_result
+        except:
+            as: e
+            steps:
+                - assignments_4__execute_bq_query_4_definitions_exception:
+                    assign:
+                      - map_e                                      :  ${catch_exception_e(e)}
+                      - map_t600_ini["§gwf_400_last_return_code§"] :  ${map_e["code"]       }
+                      - map_t600_ini["§gwf_400_error_message§"   ] : '${"gwf_call:bqfw_execute_bq_query;" + log_table_name_src + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                      - map_t600_ini["§process_400_phase_id§"    ] :  0
+                      - map_t600_ini["§process_400_phase_name§"  ] :  "executions aborted"
+                      - map_t600_ini["§gwf_400_status_id§"       ] :  ${ bq_run_result[2].ret_code }
+                      - map_t600_ini["§gwf_400_status_name§"     ] :  "executions abortion due exception error"
+                      - o_log_ret                                  :  ${ sub_log_steering_log_info( map_t600_ini, map_bqfw_info, map_init_info, map_specific_info ) }
+                - return_wf_call_exception_error_bqfw_execute_bq_query_1:
+                    return:
+                      - ret_stat :  "abortion"
+                      - ret_code :  ${map_e["code"] }
+                      - ret_msg  : '${map_t600_ini["§gwf_400_error_message§"]}'
+                      - ret_json :  ${e}
+
+    - check_on_bqfw_execute_bq_query_4_definitions_error:
+        switch:
+          # check for execution errors
+          - condition: ${  bq_run_result[2].ret_code > 0 or bq_run_result[4].ret_rows == 0 }
+            steps:
+                - assignments_4_bqfw_execute_bq_query_error_1:
+                    assign:
+                      - map_t600_ini["§gwf_400_last_return_code§"] :  ${bq_run_result[2].ret_code }
+                      - map_t600_ini["§gwf_400_error_message§"   ] : '${if( (bq_run_result[2].ret_code > 0),
+                                                                            "Aborted due Error in executing the sql:\n" + sql_select_t500_definitions + "\n\n\n" + json.encode_to_string(bq_run_result[3].ret_msg),
+                                                                            "Aborted due NO Row affected in executing the sql: " + sql_select_t500_definitions
+                                                                            ) }'
+                      - map_t600_ini["§process_400_phase_id§"    ] :  0
+                      - map_t600_ini["§process_400_phase_name§"  ] :  "executions aborted"
+                      - map_t600_ini["§gwf_400_status_id§"       ] :  ${ bq_run_result[2].ret_code }
+                      - map_t600_ini["§gwf_400_status_name§"     ] :  "executions abortion due error"
+                      - o_log_ret                                  :  ${ sub_log_steering_log_info( map_t600_ini, map_bqfw_info, map_init_info, map_specific_info ) }
+                - if_error_4_bqfw_execute_bq_query_error_stop_1:
+                    return:
+                        - ret_stat : '${if( (bq_run_result[2].ret_code > 0), "error", "nothing_to_do") }'
+                        - ret_code :  ${bq_run_result[2].ret_code }
+                        - ret_msg  : '${if( (bq_run_result[2].ret_code > 0),
+                                             "Aborted due Error in executing the sql:\n" + sql_select_t500_definitions + "\n\n\n" + bq_run_result[3].ret_msg,
+                                             "Aborted due NO Row affected in executing the sql: " + sql_select_t500_definitions
+                                             ) }'
+                        - ret_json :  ${bq_run_result }
+
+    - init_vars_4_starting_executions:
+        assign:
+          - str_insert_payload                               : ""
+          - map_def_row                                      : { }
+          - gwf_init_ts_as_float                             :  ${ sys.now()                                     }
+          - map_t600_ini["§gwf_400_record_create_ts§"      ] :  ${gwf_init_ts_as_float                           }
+          - map_t600_ini["§gwf_400_number_steps_all§"      ] :  ${bq_run_result[4].ret_rows              }
+          - map_t600_ini["§gwf_400_number_steps_remaining§"] :  ${bq_run_result[4].ret_rows              }
+          - map_t600_ini["§gwf_400_total_rows_affected§"   ] :  ${bq_run_result[4].ret_rows              }
+
+    - assign_sepcific_placeholders_spec_001:
+        assign:
+          - row_values                                       :  ${bq_run_result[0].ret_json.rows[0]}
+         #- t_map_t600_exe                                   :  ${map_t600_ini }
+          - par_map                                          :  ${sub_4_1_row_assign_select_values_to_field_names( bq_run_result[0].ret_json.schema.fields, row_values.f, map_t600_ini, true ) }
+                                                                                                                # p_col_descriptions                               , p_col_values, p_map_def_all , p_prep_steps
+    - assignments_4_ds_ensurance:
+        assign:
+          - par_map["§gwf_bq_sql_code§"   ] : 0
+          - par_map["§gwf_failed_at§"     ] : ""
+          - par_map["§gwf_bq_sql§"        ] : ""
+          - par_map["§gwf_bq_sql_result§" ] : ""
+          - par_map["§gwf_bq_sql_text§"   ] : ""
+          - par_map["§gwf_bq_sql_message§"] : ""
+          - ds_fmw_labels                   : ${ par_map["§general_ds_labels§"] }
+          - ds_fmw_info                     : {}
+          - ds_fmw_info["project_id"]       : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"         ]}
+          - ds_fmw_info["location_id"]      : "EU"
+          - map_ds                          : ${ sub_get_map_from_string(par_map[ "§gwf_bq_datasets_maps§" ]) }
+          - gwf_start_processing_as_float   : ${ sys.now() }
+
+    #---- step  ensure all needed datasets exist ------------------------------------------------------------------------------------------------------------
+    - ensure_all_needed_datasets_exist:
+        steps:
+          - loopList:
+              for:
+                  value: ky
+                  in: ${ keys( map_ds ) }
+                  steps:
+                      - checkDatasetExists_010:
+                          try:
+                            call: googleapis.bigquery.v2.datasets.get
+                            args:
+                              projectId: ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"] }
+                              datasetId: ${map_ds[ky]                           }
+                          except:
+                            as: e
+                            steps:
+                            - datasetNotFound_010:
+                                #switch:
+                                #  - condition: ${if("code"    in e, e.code, 999) != 0}
+                                next: get_needed_ds_infos
+                      - datasetExists:
+                          next: cr_ds_loop_list_end
+
+                      - get_needed_ds_infos:
+                          assign:
+                            - ds_fmw_friendly_name          : ${ map_ds[ky] }                                                                                                                               # -- staging_000_001      tmp_stocktaking_20240409_161240_731884544
+                            - ds_fmw_friendly_name          : ${text.replace_all_regex(ds_fmw_friendly_name, "(_[[:digit:]]{3}_[[:digit:]]{3})|(_[[:digit:]]{8}_[[:digit:]]{6}_[[:digit:]]{9})$$", "")  }   # -- staging              tmp_stocktaking
+                            - ds_version                    : ${ map_ds[ky] }                                                                                                                               # -- staging_000_001      tmp_stocktaking_20240409_161240_731884544
+                            - match_digits                  : ${text.find_all_regex(ds_version, "([[:digit:]]{3}_[[:digit:]]{3})|([[:digit:]]{8}_[[:digit:]]{6}_[[:digit:]]{9})$$" )  }
+                            - ds_version                    : ${match_digits[ 0 ][ "match" ] }                                                                                                              # -- 000_001              20240409_161240_731884544
+
+                            - ds_fmw_info  ["dataset_id"  ] : ${ map_ds[ky]         }                                                                                                                       # -- staging_000_001      tmp_stocktaking_20240409_161240_731884544
+                            - ds_fmw_info  ["friendlyName"] : ${ds_fmw_friendly_name}
+                            - ds_fmw_info  ["description" ] : ${ds_fmw_friendly_name}
+
+                            - ds_fmw_labels["ds_name"     ] : ${ map_ds[ky]         }                                                                                                                       # -- staging_000_001      tmp_stocktaking_20240409_161240_731884544
+                            - ds_fmw_labels["ds_version"  ] : ${ ds_version         }
+                            - wait_loops_at_end             : 0
+
+                      #---- step  if_not_exists_create_fmw_integ_dataset -----------------------------------------------------------------------------------
+                      - ensure_needed_dataset_exist:
+                          try:
+                              call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+                              args:
+                                  workflow_id      : "bq_fw_asure_ds_exists_000_001"
+                                  location         : ${par_map["§GOOGLE_CLOUD_LOCATION§"  ] }
+                                  project_id       : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"] }
+                                  argument         :
+                                    ds_info        : ${ds_fmw_info                          }
+                                    ds_label_info  : ${ds_fmw_labels                        }
+                              result: map_ret                                                     # [b_succeeded, b_dataset_already_existed]
+                          except:
+                              as: e
+                              steps:
+                                  - assignments_4_return_of_ensure_needed_dataset_exist:
+                                      assign:
+                                        - map_e                                 :  ${catch_exception_e(e)}
+                                        - par_map["§gwf_400_last_return_code§"] :  ${map_e["code"]       }
+                                        - par_map["§gwf_400_error_message§"   ] : '${"gwf_call:bq_fw_asure_ds_exists_000_001;" + ds_fmw_info["dataset_id"] + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                                        - par_map["§process_400_phase_id§"    ] :  0
+                                        - par_map["§process_400_phase_name§"  ] :  "executions aborted"
+                                        - par_map["§gwf_400_status_id§"       ] :  ${ map_ret[2].ret_code }
+                                        - par_map["§gwf_400_status_name§"     ] :  "executions abortion due exception error"
+                                        - o_log_ret                             :  ${ sub_log_steering_log_info( par_map, map_bqfw_info, map_init_info, map_specific_info ) }
+                                  - return_of_ensure_needed_dataset_exist:
+                                      return:
+                                        - ret_stat :   "abortion"
+                                        - ret_code :  ${map_e["code"]       }
+                                        - ret_msg  : '${par_map["§gwf_400_error_message§"] }'
+                                        - ret_json :  ${e}
+
+                      - leave_if_cr_ds_aborted:
+                          switch:
+                            - condition:   ${ map_ret[0].ret_stat in ["abortion", "error"] and map_ret[1].ret_code != 409 }   ##  code 409 ==> status: ALREADY_EXISTS
+                              steps:
+                                  - assignments_4_leave_if_cr_ds_aborted:
+                                      assign:
+                                        - par_map["§gwf_400_last_return_code§"] :  ${map_ret[1].ret_code }
+                                        - par_map["§gwf_400_error_message§"   ] : '${map_ret[2].ret_msg  }'
+                                        - par_map["§process_400_phase_id§"    ] :  0
+                                        - par_map["§process_400_phase_name§"  ] :  "executions aborted"
+                                        - par_map["§gwf_400_status_id§"       ] :  ${map_ret[1].ret_code }
+                                        - par_map["§gwf_400_status_name§"     ] :  "executions abortion due error"
+                                        - o_log_ret                             :  ${ sub_log_steering_log_info( par_map, map_bqfw_info, map_init_info, map_specific_info ) }
+                                  - return_if_cr_ds_aborted:
+                                      return:
+                                          - ret_stat :  ${map_ret[0].ret_stat }   # "abortion"
+                                          - ret_code :  ${map_ret[1].ret_code }
+                                          - ret_msg  : '${map_ret[2].ret_msg  }'
+                                          - ret_json :  ${map_ret[3].ret_json }
+
+                      - checkDatasetExists_020:
+                          try:
+                            call: googleapis.bigquery.v2.datasets.get
+                            args:
+                              projectId: ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"] }
+                              datasetId: ${map_ds[ky]                           }
+                          except:
+                            as: e
+                            steps:
+                            - datasetNotFound_020:
+                                switch:
+                                  - condition: ${if("code"    in e, e.code, 999) != 0 and wait_loops_at_end < 100 }
+                                    assign:
+                                      - wait_loops_at_end             : ${wait_loops_at_end + 1}
+                                    next: checkDatasetExists_020
+
+                      - cr_ds_loop_list_end:
+                          assign:
+                            - dummy_001 : 0
+
+
+
+    - try_to_exec_bqfw_execute_bq_query_4_definition:
+        try:
+            call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+            args:
+                workflow_id      : "bq_fw_exec_bq_app_stmt_000_001"
+                location         : ${par_map["§GOOGLE_CLOUD_LOCATION§"                  ]}
+                project_id       : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"                ]}
+                argument         :
+                  project_id     : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"                ]}
+                  dataset_id     : ${par_map["§META_CURRENT_METADATA_GWF_CTRL_DATASET§" ]}
+                  location_id    : "EU"
+                  operation_type : ${par_map["§gwf_operation_type§"                     ]}
+                  bq_entity_name : ${par_map["§gwf_topic§"                              ]}
+                  query_string   : ${par_map["§gwf_entity_content_sp§"                  ]}
+            result: bq_run_result
+        except:
+            as: e
+            steps:
+                - assignments_4_exec_bqfw_execute_bq_query_4_definition:
+                    assign:
+                      - map_e                                 :  ${catch_exception_e(e)}
+                      - par_map["§gwf_400_last_return_code§"] :  ${map_e["code"]       }
+                      - par_map["§gwf_400_error_message§"   ] : '${"gwf_call:bqfw_execute_bq_query;" + par_map["§gwf_topic§"] + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                      - par_map["§gwf_400_last_return_code§"] :  ${ if("code"    in e, e.code, 999) }
+                      - par_map["§gwf_400_error_message§"   ] : '${ json.encode_to_string(if("body" in e, if("error" in e.body, if("message" in e.body.error, e.body.error.message, "Unknown exception message structure. See exception."), "Unknown exception message structure. See exception."), "Unknown exception message structure. See exception.") ) + "\nfrom sql: \n" + par_map["§gwf_entity_content_sp§"] }'
+                      - par_map["§process_400_phase_id§"    ] :  1
+                      - par_map["§process_400_phase_name§"  ] :  "executions aborted"
+                      - par_map["§gwf_400_status_id§"       ] :  ${ bq_run_result[2].ret_code }
+                      - par_map["§gwf_400_status_name§"     ] :  "executions abortion due exception error"
+                      - o_log_ret                             :  ${ sub_log_steering_log_info( par_map, map_bqfw_info, map_init_info, map_specific_info ) }
+                - return_wf_call_exception_error_bqfw_execute_bq_query_001:
+                    return:
+                      - ret_stat :   "abortion"
+                      - ret_code :  ${map_e["code"]       }
+                      - ret_msg  : '${par_map["§gwf_400_error_message§"] }'
+                      - ret_json :  ${e }
+
+    - check_on_bqfw_execute_bq_query_4_executions_error:
+        switch:
+          # check for execution errors
+          - condition: ${  bq_run_result[2].ret_code != 0 }
+            steps:
+                - assignments_4_check_on_bqfw_execute_bq_query_4_executions_error:
+                    assign:
+                      - par_map["§gwf_400_last_return_code§"] :  ${bq_run_result[2].ret_code }
+                      - par_map["§gwf_400_error_message§"   ] : '${"Aborted due Error in executing the sql:\n" + par_map["§gwf_entity_content_sp§"] + "\n\n\n" + json.encode_to_string(bq_run_result[3].ret_msg) }'
+                      - par_map["§process_400_phase_id§"    ] :  1
+                      - par_map["§process_400_phase_name§"  ] :  "executions aborted"
+                      - par_map["§gwf_400_status_id§"       ] :  ${ bq_run_result[2].ret_code }
+                      - par_map["§gwf_400_status_name§"     ] :  "executions abortion due error"
+                      - o_log_ret                             :  ${ sub_log_steering_log_info( par_map, map_bqfw_info, map_init_info, map_specific_info ) }
+                - if_error_4_bqfw_execute_bq_query_4_executions_error_stop_1:
+                    return:
+                        - ret_stat :   "error"
+                        - ret_code :  ${ bq_run_result[2].ret_code }
+                        - ret_msg  : '${ "Aborted due Error in executing the sql:\n" + par_map["§gwf_entity_content_sp§"] + "\n\n\n" + bq_run_result[3].ret_msg  }'
+                        - ret_json : '${ bq_run_result }'
+
+    - log_executed_sql:
+        assign:
+          - o_log_ret : '${ sub_log_executed_sql( par_map, bq_run_result, gwf_start_processing_as_float, map_bqfw_info, map_init_info, map_specific_info ) }'
+
+    - leave_if_abortion_010:
+        switch:
+          - condition:   ${ o_log_ret[0].ret_stat in ["abortion", "error"] }
+            steps:
+                - assignments_4_leave_if_abortion_010:
+                    assign:
+                      - par_map["§gwf_400_last_return_code§"] :  ${o_log_ret[1].ret_code }
+                      - par_map["§gwf_400_error_message§"   ] : '${o_log_ret[2].ret_msg  }'
+                      - par_map["§process_400_phase_id§"    ] :  1
+                      - par_map["§process_400_phase_name§"  ] :  "executions aborted"
+                      - par_map["§gwf_400_status_id§"       ] :  ${o_log_ret[1].ret_code }
+                      - par_map["§gwf_400_status_name§"     ] :  "executions abortion due error"
+                      - o_steer_log_ret                       :  ${ sub_log_steering_log_info( par_map, map_bqfw_info, map_init_info, map_specific_info ) }
+                - leave_sub_010:
+                    return:
+                        - ret_stat :  ${o_log_ret[0].ret_stat }   # "abortion"
+                        - ret_code :  ${o_log_ret[1].ret_code }
+                        - ret_msg  : '${o_log_ret[2].ret_msg  }'
+                        - ret_json :  ${o_log_ret[3].ret_json }
+
+
+    #---- step  if_not_exists_create_fmw_integ_dataset -----------------------------------------------------------------------------------
+    - log_main_steering_log_info:
+        switch:
+          - condition:   ${ is_last_step }
+            steps:
+                - wait_some_moments:
+                    call: sys.sleep
+                    args:
+                        seconds : ${ 10 } # 5 operations per 10 seconds => https://cloud.google.com/bigquery/quotas#:~:text=Your%20project%20can%20make%20up%20to%20five%20table%20metadata%20update%20operations%20per%2010%20seconds%20per%20table.%20This%20limit%20applies%20to%20all%20table%20metadata%20update%20operations%2C%20performed%20by%20the%20following%3A
+
+                - log_steering_log_info:
+                    assign:
+                      - map_t600_ini["§gwf_400_last_return_code§"           ] :  "executions succeeded"
+                      - map_t600_ini["§gwf_400_number_steps_all§"           ] :  ${int(map_t600_ini["§gwf_step_id§"])          }
+                      - map_t600_ini["§gwf_400_number_steps_succeeded§"     ] :  ${int(map_t600_ini["§gwf_step_id§"])          }
+                      - map_t600_ini["§gwf_400_number_steps_remaining§"     ] :  ${int(map_t600_ini["§gwf_step_id§"])          }
+                      - map_t600_ini["§gwf_400_total_rows_affected§"        ] :  ${int(map_t600_ini["§gwf_step_id§"])          }
+                      - map_t600_ini["§gwf_400_record_create_ts§"           ] :  ${gwf_init_ts_as_float                        }
+                      - map_t600_ini["§process_400_phase_name§"             ] :  "step executions"
+                      - map_t600_ini["§process_400_phase_id§"               ] :  0
+                      - map_t600_ini["§gwf_400_status_id§"                  ] :  0
+                      - map_t600_ini["§gwf_400_status_name§"                ] :  "successfully finished"
+
+                      - map_t600_ini["§gwf_400_re_run§"                     ] :  false
+                      - map_t600_ini["§gwf_400_finished§"                   ] :  true
+                      - map_t600_ini["§gwf_400_succeded§"                   ] :  true
+
+                      - map_t600_ini["§gwf_400_error_message§"              ] :  ""
+
+                      - o_log_ret                                             : ${ sub_log_steering_log_info( map_t600_ini, map_bqfw_info, map_init_info, map_specific_info ) }
+
+                - leave_if_log_steering_log_info_abortion:
+                    switch:
+                      - condition:   ${ o_log_ret[0].ret_stat in ["abortion", "error"] }
+                        steps:
+                            - return_if_log_steering_log_info_abortion:
+                                return:
+                                    - ret_stat :  ${o_log_ret[0].ret_stat }   # ["abortion", "error"]
+                                    - ret_code :  ${o_log_ret[1].ret_code }
+                                    - ret_msg  : '${o_log_ret[2].ret_msg  }'
+                                    - ret_json :  ${o_log_ret[3].ret_json }
+
+
+
+    - returnResult:
+       #return: ${ [ par_map, bq_run_result[0].ret_json.rows ] }
+        return:
+          - ret_stat : "succeeded"
+          - ret_code : 0
+          - ret_msg  : "bq_fw_exec_1_def_app_step_000_001 successfully ended."
+          - ret_json : ${ o_log_ret[3].ret_json }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_log_executed_sql
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_log_executed_sql:
+    params: [ par_map, bq_run_result, gwf_start_processing_as_float, map_bqfw_info, map_init_info, map_specific_info ]
+
+    steps:
+    - prep_init_sub_4_1_row_assign_select_values_to_field_names_map_vars:
+        assign:
+          - gwf_end_processing_as_float                            :  ${sys.now()                                                                 }
+
+          - gwf_step_exec_bq_sql_result_json                       :  ${json.encode_to_string(bq_run_result[0].ret_json                         ) }
+          - gwf_step_exec_bq_sql_result_json                       :  ${text.replace_all( gwf_step_exec_bq_sql_result_json, "\r", "\\r"         ) }
+          - gwf_step_exec_bq_sql_result_json                       :  ${text.replace_all( gwf_step_exec_bq_sql_result_json, "\n", "\\n"         ) }
+          - gwf_step_exec_bq_sql_result_json                       :  ${text.replace_all( gwf_step_exec_bq_sql_result_json, "'" , "\\'"         ) }
+
+          - gwf_step_exec_bq_sql_message                           :  ${ bq_run_result[3].ret_msg                                                 }
+          - gwf_step_exec_bq_sql_message                           :  ${text.replace_all( gwf_step_exec_bq_sql_message    , "\r", "\\r"         ) }
+          - gwf_step_exec_bq_sql_message                           :  ${text.replace_all( gwf_step_exec_bq_sql_message    , "\n", "\\n"         ) }
+          - gwf_step_exec_bq_sql_message                           :  ${text.replace_all( gwf_step_exec_bq_sql_message    , "'" , "\\'"         ) }
+
+          - job_info                                               :  ${bq_run_result[5].ret_job                                                  }
+          - gwf_step_exec_bq_job_info_json                         :  ${json.encode_to_string( job_info                                         ) }
+          - gwf_step_exec_bq_job_info_json                         :  ${text.replace_all( gwf_step_exec_bq_job_info_json , "\r", "\\r"          ) }
+          - gwf_step_exec_bq_job_info_json                         :  ${text.replace_all( gwf_step_exec_bq_job_info_json , "\n", "\\n"          ) }
+          - gwf_step_exec_bq_job_info_json                         :  ${text.replace_all( gwf_step_exec_bq_job_info_json , "'" , "\\'"          ) }
+
+    - init_sub_4_1_row_assign_select_values_to_field_names_map_vars:
+        assign:
+          - par_map["§gwf_last_return_code§"                     ] :  ${string( bq_run_result[2].ret_code                                       ) }
+          - par_map["§gwf_step_exec_bq_sql_text§"                ] : '${bq_run_result[1].ret_txt                                                  }'
+          - par_map["§gwf_step_exec_bq_sql_code§"                ] : '${bq_run_result[2].ret_code                                                 }'
+
+          ## -- STRUCT -- map_gwf_exec_specs_cols_data_types --
+          - par_map["§gwf_step_rows_affected§"                   ] :  ${if( ( bq_run_result[2].ret_code == 0 ), bq_run_result[4].ret_rows   , 0 ) }
+          - par_map["§gwf_step_new_table_size_bytes§"            ] :  ${if( ( bq_run_result[2].ret_code == 0 ), bq_run_result[6].ret_bytes  , 0 ) }
+          - par_map["§gwf_step_start_ts§"                        ] : '${time.format(gwf_start_processing_as_float, "CET"                        ) }'
+          - par_map["§gwf_step_end_ts§"                          ] : '${time.format(gwf_end_processing_as_float  , "CET"                        ) }'
+          - par_map["§gwf_step_duration_microsecs§"              ] :  ${int( gwf_end_processing_as_float * 1000000 ) - int( gwf_start_processing_as_float * 1000000 ) }
+          - par_map["§gwf_step_exec_bq_sql_result_json§"         ] : '${gwf_step_exec_bq_sql_result_json                                          }'
+          - par_map["§gwf_step_exec_bq_sql_text§"                ] :  ${bq_run_result[1].ret_txt                                                  }
+          - par_map["§gwf_step_exec_bq_sql_code§"                ] :  ${bq_run_result[2].ret_code                                                 }
+          - par_map["§gwf_step_exec_bq_sql_message§"             ] : '${gwf_step_exec_bq_sql_message                                              }'
+          - par_map["§gwf_step_error_json§"                      ] :  ${if( ( bq_run_result[2].ret_code != 0 ), gwf_step_exec_bq_sql_message, "") }
+
+
+          ## -- STRUCT --  map_gwf_job_specs_cols_data_types --
+          - par_map["§gwf_step_bq_job_job_id§"                   ] : '${json.encode_to_string(job_info.jobReference.jobId                        ) }'
+          - par_map["§gwf_step_bq_job_job_type§"                 ] : '${job_info.configuration.jobType                                             }'
+          - par_map["§gwf_step_bq_job_statement_type§"           ] : '${job_info.statistics.query.statementType                                    }'
+          - par_map["§gwf_step_exec_bq_job_info_json§"           ] : '${gwf_step_exec_bq_job_info_json                                             }'
+          - par_map["§gwf_step_bq_job_total_bytes_processed§"    ] :  ${int(job_info.statistics.query.totalBytesProcessed                        ) }
+          - par_map["§gwf_step_bq_job_total_bytes_billed§"       ] :  ${int(job_info.statistics.query.totalBytesBilled                           ) }
+          - par_map["§gwf_step_bq_job_total_modified_partitions§"] :  ${int(job_info.statistics.query.totalPartitionsProcessed                   ) }
+          - par_map["§gwf_step_bq_job_total_slot_ms§"            ] :  ${int(job_info.statistics.query.totalSlotMs                                ) }
+          - par_map["§gwf_step_bq_job_destination_table§"        ] : '${get_target_table_as_string(job_info                                      ) }'
+          - par_map["§gwf_step_bq_job_referenced_tables_json§"   ] : '${get_all_referenced_tables_as_string( job_info.statistics.query           ) }'
+          - par_map["§gwf_step_bq_job_cache_hit§"                ] : '${job_info.statistics.query.cacheHit                                         }'
+
+          ## -- STRUCT -- t_400 - gwf_exec_specs --
+          - par_map["§gwf_400_last_step§"                        ] :  ${par_map["§gwf_step_id§" ]                                                  }
+          - par_map["§gwf_400_last_return_code§"                 ] :  ${bq_run_result[2].ret_code                                                  }
+          - par_map["§gwf_400_number_steps_succeeded§"           ] :  ${par_map["§gwf_400_number_steps_succeeded§"    ] + if( ( bq_run_result[2].ret_code == 0 ), 1                                                       , 0 ) }
+          - par_map["§gwf_400_number_steps_failed§"              ] :  ${par_map["§gwf_400_number_steps_failed§"       ] + if( ( bq_run_result[2].ret_code != 0 ), 1                                                       , 0 ) }
+          - par_map["§gwf_400_number_steps_remaining§"           ] :  ${par_map["§gwf_400_number_steps_remaining§"    ] - if( ( bq_run_result[2].ret_code == 0 ), 1                                                       , 0 ) }
+          - par_map["§gwf_400_total_rows_affected§"              ] :  ${par_map["§gwf_400_total_rows_affected§"       ] + if( ( bq_run_result[2].ret_code == 0 ), par_map["§gwf_step_rows_affected§"                    ] , 0 ) }
+          - par_map["§gwf_400_total_bytes_for_new_tables§"       ] :  ${par_map["§gwf_400_total_bytes_for_new_tables§"] + if( ( bq_run_result[2].ret_code == 0 ), par_map["§gwf_step_new_table_size_bytes§"             ] , 0 ) }
+          - par_map["§gwf_400_total_bytes_processed§"            ] :  ${par_map["§gwf_400_total_bytes_processed§"     ] + if( ( bq_run_result[2].ret_code == 0 ), par_map["§gwf_step_bq_job_total_bytes_processed§"     ] , 0 ) }
+          - par_map["§gwf_400_total_bytes_billed§"               ] :  ${par_map["§gwf_400_total_bytes_billed§"        ] + if( ( bq_run_result[2].ret_code == 0 ), par_map["§gwf_step_bq_job_total_bytes_billed§"        ] , 0 ) }
+          - par_map["§gwf_400_total_modified_partitions§"        ] :  ${par_map["§gwf_400_total_modified_partitions§" ] + if( ( bq_run_result[2].ret_code == 0 ), par_map["§gwf_step_bq_job_total_modified_partitions§" ] , 0 ) }
+          - par_map["§gwf_400_total_slot_ms§"                    ] :  ${par_map["§gwf_400_total_slot_ms§"             ] + if( ( bq_run_result[2].ret_code == 0 ), par_map["§gwf_step_bq_job_total_slot_ms§"             ] , 0 ) }
+          - par_map["§gwf_400_finished§"                         ] :  ${ if( ( bq_run_result[2].ret_code == 0 ), true, false            ) }
+
+    - try_to_exec_mng_app_exec_log_tab_get_sql_insert_t600_execution_logging:
+        try:
+            call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+            args:
+                workflow_id      : "bq_fw_mng_app_exec_log_tab_000_001"
+                location         : ${par_map["§GOOGLE_CLOUD_LOCATION§"     ]}
+                project_id       : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"   ]}
+                argument         :
+                  ask_for        : "get_sql_insert_t600_execution_logging"
+                  par_map        : ${par_map      }
+            result: sql_insert_t600_execution_logging
+        except:
+            as: e
+            steps:
+                - assignments_exception_in_mng_app_exec_log_tab_get_sql_insert_t600_execution_logging:
+                    assign:
+                      - map_e                                 :  ${catch_exception_e( e ) }
+                      - par_map["§gwf_400_last_return_code§"] :  ${map_e["code"]   }
+                      - par_map["§gwf_400_error_message§"   ] : '${"gwf_call:bq_fw_mng_app_exec_log_tab_000_001;ask_for=g:t_sql_insert_t600_execution_logging aborted:\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                      - par_map["§process_400_phase_id§"    ] :  0
+                      - par_map["§process_400_phase_name§"  ] :  "executions aborted"
+                      - par_map["§gwf_400_status_id§"       ] :  100
+                      - par_map["§gwf_400_status_name§"     ] :  "executions abortion due exception error"
+                      - o_log_ret                             :  ${ sub_log_steering_log_info( par_map, map_bqfw_info, map_init_info, map_specific_info ) }
+                - return__exception_in_to_mng_app_exec_log_tab_get_sql_insert_t600_execution_logging:
+                    return:
+                        - ret_stat :  "abortion"
+                        - ret_code :  ${map_e["code"] }
+                        - ret_msg  : '${par_map["§gwf_400_error_message§"] }'
+                        - ret_json :  ${e}
+
+    #---- step  write_t600_execution_from_composed_insert -----------------------------------------------------------------------------------------------------------
+    - write_t600_execution_from_composed_insert:
+        steps:
+        - try_to_exec_bqfw_execute_bq_query_4_insert_t600_execution:
+            try:
+                call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+                args:
+                    workflow_id      : "bq_fw_exec_bq_logging_000_001"
+                    location         : ${par_map["§GOOGLE_CLOUD_LOCATION§"                  ]}
+                    project_id       : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"                ]}
+                    argument         :
+                      project_id     : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"                ]}
+                      dataset_id     : ${par_map["§META_CURRENT_METADATA_GWF_CTRL_DATASET§" ]}
+                      location_id    : "EU"
+                      operation_type : "insert"
+                      bq_entity_name : ${par_map["§log_table_name_trg§"                     ]}
+                      query_string   : ${sql_insert_t600_execution_logging                   }
+                result: log_result
+            except:
+                as: e
+                steps:
+                    - assignments_4_return_wf_call_exception_error_bqfw_execute_bq_insert_1:
+                        assign:
+                          - map_e    :  ${catch_exception_e( e ) }
+                    - return_wf_call_exception_error_bqfw_execute_bq_insert_1:
+                        return:
+                          - ret_stat :  "abortion"
+                          - ret_code :  ${map_e["code"]   }
+                          - ret_msg  : '${"gwf_call:bqfw_execute_bq_query:\n" + par_map["§log_table_name_trg§"] + ":\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                          - ret_json :  ${ e }
+
+    - returnResult:
+        return:
+          - ret_stat : "succeeded"
+          - ret_code : 0
+          - ret_msg  : "sub_log_executed_sql successfully ended."
+          - ret_json : ${ log_result }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_all_referenced_tables_as_string
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_all_referenced_tables_as_string:
+    params: [ job_info_statistics_query ]
+    steps:
+    - init_list_map_values:
+        assign:
+          - str_list_tables : ""
+          - loop_counter    : 0
+
+    - leave_if_no_referencedTables_010:
+        switch:
+          - condition:   ${ not ( "referencedTables" in keys(job_info_statistics_query) ) }
+            steps:
+                - leave_sub_010:
+                    return: ${str_list_tables}
+    - for-in-map:
+        steps:
+          - loopMap:
+              for:
+                  value: table
+                  in: ${ job_info_statistics_query.referencedTables }
+                  steps:
+                      - add_table_name:
+                          switch:
+                            - condition:   ${ loop_counter == 0 }
+                              steps:
+                                  - add_first_table_name:
+                                      assign:
+                                        - str_list_tables : ${ table.projectId + "." + table.datasetId + "." + table.tableId   }
+                                        - loop_counter    : ${ loop_counter + 1 }
+                            - condition:   ${ loop_counter != 0 }
+                              steps:
+                                  - add_another_table_name:
+                                      assign:
+                                        - str_list_tables : ${ str_list_tables + ";" + table.projectId + "." + table.datasetId + "." + table.tableId  }
+    - returnResult:
+        return: ${str_list_tables}
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  catch_exception_e
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+catch_exception_e:
+    params: [ e ]
+    steps:
+    - init_list_map_values:
+        assign:
+          - map_e                  : {}
+          - map_e["code"]          : 999
+          - map_e["message"]       : ""
+          - map_e["error_message"] : ""
+
+    - check_if_code_in_exception_e:
+        switch:
+          - condition:   ${ "code" in e }
+            assign:
+              - map_e["code"]    : ${e.code}
+#            next: returnResult
+
+    - check_if_message_in_exception_e:
+        switch:
+          - condition:   ${ "message" in e }
+            assign:
+              - map_e["message"] : ${map_e["message"] + e.message}
+#            next: returnResult
+
+    - check_if_body_in_exception_e:
+        switch:
+          - condition:   ${ "body" in e }
+            switch:
+              - condition:   ${ "error" in e.body }
+                switch:
+                  - condition:   ${ "message" in e.body.error }
+                    assign:
+                      - map_e["message"] : ${map_e["message"] + e.body.error.message}
+
+    - check_if_operation_in_exception_e:
+        switch:
+          - condition:   ${ "operation" in e }
+            switch:
+              - condition:   ${ "error" in e.operation }
+                switch:
+                  - condition:   ${ "context" in e.operation.error and "payload" in e.operation.error }
+                    assign:
+                      - map_e["error_message"] : ${map_e["error_message"] + e.operation.error.payload + "\n    \n" + e.operation.error.context }
+
+    - check_if_message_empty:
+        switch:
+          - condition:   ${ map_e["message"] == "" }
+            assign:
+              - map_e["message"]       : "Unknown exception message structure. See exception."
+
+    - check_if_error_message_empty:
+        switch:
+          - condition:   ${ map_e["error_message"] == "" }
+            assign:
+              - map_e["error_messageerror_message"]       : "Unknown exception message structure. See exception."
+
+
+    - returnResult:
+        return: ${map_e}
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_target_table_as_string
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_target_table_as_string:
+    params: [ job_info ]
+    steps:
+    - init_list_map_values:
+        assign:
+          - str_list_tables : ""
+          - loop_counter    : 0
+
+    - check_where_to_find_target_table:
+        switch:
+          - condition:   ${ ( "ddlTargetTable" in keys(job_info.statistics.query) ) }
+            steps:
+                - get_it_from_ddlTargetTable:
+                    return: '${job_info.statistics.query.ddlTargetTable.projectId + "."
+                             + job_info.statistics.query.ddlTargetTable.datasetId + "."
+                             + job_info.statistics.query.ddlTargetTable.tableId      }'
+
+          - condition:   ${ ( "destinationTable" in keys(job_info.configuration.query) ) }
+            steps:
+                - get_it_from_destinationTable:
+                    return: '${job_info.configuration.query.destinationTable.projectId + "."
+                             + job_info.configuration.query.destinationTable.datasetId + "."
+                             + job_info.configuration.query.destinationTable.tableId      }'
+
+    - returnResult:
+        return: ${str_list_tables}
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_get_map_from_string
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_get_map_from_string:
+    params: [map_string]
+
+    steps:
+    - init_sub_get_map_from_string:
+        assign:
+           - l_map : {}
+           - list_map_pairs : []
+           - list_map_pairs : ${ if( (map_string != ""), text.split( map_string, ";" ), []) }
+
+    - loop_list_of_columns:
+        for:
+          value: map_pair
+          in: ${ list_map_pairs }
+          steps:
+            - assign_mapping_pairs_2_mapping:
+                assign:
+                  - list_pair_elements              : ${ text.split( map_pair, "=" ) }
+                  - l_map[ list_pair_elements[0] ]  : ${ list_pair_elements[1] }
+
+    - returnResult:
+        return: ${ l_map }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_log_steering_log_info
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_log_steering_log_info:
+    params: [ p_par_map, p_map_bqfw_info, p_map_init_info, p_map_specific_info ]
+
+    steps:
+    - for_all_400_keys_in_map:
+        steps:
+          - loopMap:
+              for:
+                  value: ky
+                  in: ${ keys(p_par_map) }
+                  steps:
+                      - check_if_400_mapping:
+                          switch:
+                            - condition:   ${ text.match_regex(ky, "_400_" ) }
+                              steps:
+                                  - add_first_table_name:
+                                      assign:
+                                        - key_org            : ${ text.replace_all_regex( ky, "_400_", "_" ) }
+                                        - p_par_map[key_org] : ${ p_par_map[ky] }
+
+
+    #---- step  write_steering_log_from_par_map -----------------------------------------------------------------------------------------------------------
+    - write_steering_log_from_par_map:
+        steps:
+        - try_to_exec_write_steering_log_info_4_insert_steering_log:
+            try:
+                call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+                args:
+                    workflow_id      : "bq_fw_write_steering_log_info_000_001"
+                    location         : ${p_par_map["§GOOGLE_CLOUD_LOCATION§"                  ]}
+                    project_id       : ${p_par_map["§GOOGLE_CLOUD_PROJECT_ID§"                ]}
+                    argument         :
+                      bqfw_info      : ${p_map_bqfw_info                                       }
+                      init_info      : ${p_map_init_info                                       }
+                      specific_info  : ${p_map_specific_info                                   }
+                      bqfw_log_info  : ${p_par_map                                             }
+                result: log_result
+            except:
+                as: e
+                steps:
+                    - assignments_4_wf_call_exception_error_log_steering_log_info_1:
+                        assign:
+                          - map_e    :  ${catch_exception_e(e)}
+                    - return_wf_call_exception_error_log_steering_log_info_1:
+                        return:
+                          - ret_stat :  "abortion"
+                          - ret_code :  ${map_e["code"] }
+                          - ret_msg  : '${"gwf_call:bq_fw_write_steering_log_info_000_001:\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                          - ret_json :  ${ p_par_map }
+
+    - returnResult:
+        return:
+          - ret_stat : "succeeded"
+          - ret_code : 0
+          - ret_msg  : "sub_log_steering_log_info successfully ended."
+          - ret_json : ${ p_par_map }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_4_1_row_assign_select_values_to_field_names
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_4_1_row_assign_select_values_to_field_names:
+    params: [p_col_descriptions, p_col_values, p_map_def_all, p_prep_steps]
+
+    steps:
+    - init_sub_4_1_row_assign_select_values_to_field_names_vars:
+        assign:
+          - idx             : 0
+
+    - loop_list_of_colums:
+        for:
+          value: column_description
+          in: ${p_col_descriptions}
+          steps:
+            - init_vars_for_loop_list_of_colums:
+                assign:
+                  - s_idx               : '${"§" + column_description.name + "§"}'
+                  - p_map_def_all[s_idx]:  ${ p_col_values[idx].v }
+
+            - end_loop_list_of_colums_steps :
+                assign:
+                  - idx                     :  ${ idx + 1 }
+
+    - returnResult:
+        return: ${ p_map_def_all    }
+
+
+

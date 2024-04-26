@@ -1,0 +1,346 @@
+# Module: exec_bq_stmt_base
+# Description: This module is a general routine for executing BigQuery queries. It is integrated identically into three different Google Workflows modules:
+# - bq_fw_exec_bq_app_stmt_000_001 -> Executes only user-defined BigQuery statements that are part of the implemented workflow itself (... and NO framework-owned BigQuery statements).
+# - bq_fw_exec_bq_log_read_000_001 -> Reads information from log tables for framework control purposes.
+# - bq_fw_exec_bq_logging_000_001  -> Writes to the 6 log tables.
+# This design enhances runtime debugging by providing a clear trace of what operations were executed, simplifying the search for corresponding log entries.
+# Note: In Terraform, $$ must be escaped to avoid errors.
+# In terraform you need to escape the $$$$ or it will cause errors.
+main:
+  params: [args]                                # Input parameters for the workflow 
+  steps:
+    - init_return_vars:                         # Initialize variables to store the results and details of the BigQuery execution
+        assign:
+          - timeout_milliseconds       : 210000 # Timeout set to 3.5 minutes             
+         #- timeout_milliseconds       : 900000 # 15 minutes (commented out alternative) 
+         #- timeout_milliseconds       :  10000 # 10 seconds (commented out default)     
+          - ret_txt   : ""                      # Text result for logging or messages     
+          - ret_json  : ""                      # JSON result for structured data output  
+          - ret_code  : 0                       # Return code for status signaling        
+          - ret_msg   : ""                      # Message detailing any issues or statuses
+          - ret_rows  : 0                       # Number of rows affected by the query    
+          - ret_bytes : 0                       # Data amount processed by the query      
+
+          - ret_job                                                            : {}         # Dictionary to hold detailed job execution stats
+          - ret_job["configuration"                                          ] : {}         # Configuration details of the job               
+          - ret_job["configuration"]["jobType"                               ] : "QUERY"
+          - ret_job["jobReference"                                           ] : {}
+          - ret_job["jobReference" ]["jobId"                                 ] : 0
+          - ret_job["statistics"                                             ] : {}
+          - ret_job["statistics"   ]["query"                                 ] : {}
+          - ret_job["statistics"   ]["query"  ]["cacheHit"                   ] : false
+          - ret_job["statistics"   ]["query"  ]["ddlTargetTable"             ] : {}
+          - ret_job["statistics"   ]["query"  ]["totalBytesBilled"           ] : 0
+          - ret_job["statistics"   ]["query"  ]["totalBytesProcessed"        ] : 0
+          - ret_job["statistics"   ]["query"  ]["totalPartitionsProcessed"   ] : 0
+          - ret_job["statistics"   ]["query"  ]["totalSlotMs"                ] : 0
+          - ret_job["statistics"   ]["query"  ]["statementType"              ] : "unknown"  # Initial unknown statement type
+
+    - read_runtime_args:                        # Step to read and validate runtime arguments necessary for executing the query
+        switch:
+          - condition: ${  "project_id" in args
+                       and "dataset_id" in args
+                       and "location_id" in args
+                       and "operation_type" in args
+                       and "bq_entity_name" in args
+                       and "query_string" in args }
+            assign:
+              - project_id     : ${args.project_id       }
+              - dataset_id     : ${args.dataset_id       }
+              - location_id    : ${args.location_id      }
+              - operation_type : ${args.operation_type   }
+              - bq_entity_name : ${args.bq_entity_name   }
+              - query_string   : ${text.replace_all( args.query_string, "\\\\", "\\" ) }   # Ensure proper escaping
+
+              # Mapping BigQuery job details based on input parameters
+              - ret_job["statistics"]["query"  ]["ddlTargetTable"]["projectId"] : ${ project_id     }
+              - ret_job["statistics"]["query"  ]["ddlTargetTable"]["datasetId"] : ${ dataset_id     }
+              - ret_job["statistics"]["query"  ]["ddlTargetTable"]["tableId"  ] : ${ bq_entity_name }
+              - ret_job["statistics"]["query"  ]["statementType"              ] : ${ operation_type }
+
+            next: dummy_read_runtime_args_step  # Proceed to the next step for further processing. Dummy is allways there in case any code is changed
+
+          - condition: true                     # Fallback error handling for missing or incorrect input parameters
+            return:
+                - ret_json  : ${ret_json  }
+                - ret_txt   :  "abortion"
+                - ret_code  :  9990
+                - ret_msg   :  "Abortion due WRONG INPUT PARAMS in gwf module bqfw_exec_bq_stmt_base! (Params: project_id, location_id, dataset_id, operation_type, bq_entity_name, query_string)."
+                - ret_rows  : ${ret_rows  }
+                - ret_job   : ${ret_job   }
+                - ret_bytes : ${ret_bytes }
+
+    - dummy_read_runtime_args_step:
+        assign:
+          - dummy1 :  0                         # Dummy variable assignment, serves no functional purpose. Just bcause something has to be done.
+
+    - debug_info_4_query_string:                # Log the query string for debugging purposes
+        call: sys.log
+        args:
+          data: ${ query_string }
+          severity: "DEBUG"                     # Log the query string at DEBUG level for troubleshooting and to get the clear BigQuery Statenment
+
+
+    - try_to_execute_bigquery_sql:              # Attempt to execute the SQL query using BigQuery API
+        try:
+            call: googleapis.bigquery.v2.jobs.query
+            args:
+                projectId: ${project_id}
+                body:
+                    defaultDataset :
+                        datasetId  : ${dataset_id}
+                        projectId  : ${project_id}
+                    dryRun         : false
+                    location       : ${location_id}
+                    query          : ${query_string}
+                    timeoutMs      : ${ timeout_milliseconds }
+                    useLegacySql   : false
+                    useQueryCache  : false
+            result: ret_json
+        except:
+            as: e                                                   # Exception handling block
+            steps:
+                - extract_map_info_from_call_run_query_exception:   # Extract and handle information from query execution exceptions
+                    assign:
+                      - map_e      : ${catch_exception_e(e)}       # Utilizing a subroutine to parse exception details. 
+                - known_errors:                                     # Handling known error types based on HTTP status codes
+                    switch:
+                    - condition: ${ not("HttpError" in map_e.tags) }
+                      assign:
+                        - ret_txt  : "connection_issue"
+                      next: return_from_call_run_query_exception
+                    - condition: ${map_e["code"] == 404}
+                      assign:
+                        - ret_txt   : "error_404_entity_not_found"
+                      next: return_from_call_run_query_exception
+                    - condition: ${map_e["code"] == 403}
+                      assign:
+                        - ret_txt  : "error_403_authentication_failed"
+                      next: return_from_call_run_query_exception
+                    - condition: ${map_e["code"] == 400}
+                      assign:
+                        - ret_txt  : "error_400_syntax error__invalid_query"
+                      next: return_from_call_run_query_exception
+                    - condition: ${ true }
+                      assign:
+                        - ret_txt    : "unknown error"
+
+                - return_from_call_run_query_exception:             # Return from exception handling with detailed error info
+                   return:
+                        - ret_json  : ${e              }
+                        - ret_txt   : ${ret_txt        }
+                        - ret_code  : ${map_e["code"]  }
+                        - ret_msg   : '${ "call:bigquery.v2.jobs.query:bq_entity_name:" + bq_entity_name + "operation_type: " +  operation_type + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                        - ret_rows  : ${ret_rows       }
+                        - ret_job   : ${ret_job        }
+                        - ret_bytes : ${ret_bytes      }
+
+    - set_succeeded_results:                                        # Set results based on the operation type, handling various outcomes such as inserts and selects
+        switch:
+          - condition:   ${ text.match_regex(operation_type, "^insert.*$" ) }
+            steps:
+                - set_row_number_from_insert :
+                    assign:
+                      - ret_rows : ${ int( ret_json.dmlStats.insertedRowCount ) }
+
+          - condition:   ${ text.match_regex(operation_type, "^select.*$" ) }
+            steps:
+                - set_row_number_from_select :
+                    assign:
+                      - ret_rows : ${ int( ret_json.totalRows ) }
+
+          - condition:   ${ text.match_regex(operation_type, "^create.+_table_from_select$" ) }
+            steps:
+                - check_if_is_table_created_and_set_row_number:
+                    assign:
+                      - list_result: ${sub_wait_until_create_entity_finished_and_return_row_numbers(project_id, location_id, dataset_id, bq_entity_name ) }
+                      - ret_rows   : ${list_result[0].number_rows  }
+                      - ret_bytes  : ${list_result[1].number_bytes }
+
+          - condition:   ${ text.match_regex(operation_type, "^create_.+_view$" ) }
+            steps:
+                - check_if_is_view_created_and_set_row_number:
+                    assign:
+                      - list_result: ${ sub_wait_until_create_entity_finished_and_return_row_numbers(project_id, location_id, dataset_id, bq_entity_name ) }
+                      - ret_rows   : ${ list_result[0].number_rows  }
+                      - ret_bytes  : ${ list_result[1].number_bytes }
+
+    - get_job_info:                                                 # Retrieve detailed job information post-query execution
+        try:
+            call: googleapis.bigquery.v2.jobs.get
+            args:
+                jobId     : ${ret_json.jobReference.jobId}
+                projectId : ${project_id  }
+                location  : ${location_id }
+            result: org_executed_bq_sql_job_info                    # Original job info to merge with the current job state
+        except:
+            as: e
+            steps:
+                - extract_map_info_from_call_get_job_info_exception:
+                    assign:
+                      - map_e      : ${catch_exception_e(e)}
+                - return_from_call_get_job_info_exception:
+                   return:
+                        - ret_json  :  ${e              }
+                        - ret_txt   :  ${ret_txt        }
+                        - ret_code  :  ${map_e["code"]  }
+                        - ret_msg   : '${ "call:bigquery.v2.jobs.get:bq_entity_name:" + bq_entity_name + "operation_type: " +  operation_type + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                        - ret_rows  :  ${ret_rows       }
+                        - ret_job   :  ${ret_job        }
+                        - ret_bytes :  ${ret_bytes      }
+
+    - check_if_query_plan_to_large:                                 # Check if the query plan is too large to handle and the framework surpasses Google Workflows memory limitsat the end
+        switch:
+          - condition:   ${ text.match_regex(operation_type, "^(insert|select).*$") and len(json.encode_to_string(org_executed_bq_sql_job_info.statistics.query.queryPlan) ) > 20000 }
+            steps:
+                - empty_query_plan:
+                    assign:
+                      - org_executed_bq_sql_job_info.statistics.query.queryPlan : []
+
+    - map_merge_nested__org_executed_bq_sql_job_info__into__executed_bq_sql_job_info:   # Merge job information for final output
+        assign:
+          - ret_job :  ${map.merge_nested(ret_job, org_executed_bq_sql_job_info) }
+
+    - returnResult:                                                 # Return final results of the workflow
+        return:
+            - ret_json  : ${ret_json  }
+            - ret_txt   : ${ret_txt   }
+            - ret_code  : ${ret_code  }
+            - ret_msg   : ${ret_msg   }
+            - ret_rows  : ${ret_rows  }
+            - ret_job   : ${ret_job   }
+            - ret_bytes : ${ret_bytes }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+# Subroutine: catch_exception_e
+# Description: Parses and extracts detailed information from exceptions thrown during API calls.
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+catch_exception_e:
+    params: [ e ]
+    steps:
+    - _init_list_map_values:
+        assign:
+          - map_e                  : {}
+          - map_e["code"         ] : 999    # Default unknown error code
+          - map_e["message"      ] : ""
+          - map_e["error_message"] : ""
+          - map_e["tags"         ] : []
+
+    - _check_if_code_in_exception_e     :   # Check if the exception has a specific error code
+        switch:
+          - condition:   ${ "code" in e }
+            assign:
+              - map_e["code"]           : ${e.code}
+
+    - _check_if_tags_in_exception_e     :   # Check for any tags in the exception to classify the error further
+        switch:
+          - condition:   ${ "tags" in e }
+            assign:
+              - map_e["tags"]           : ${e.tags}
+
+    - _check_if_message_in_exception_e  :   # Aggregate all messages related to the exception
+        switch:
+          - condition:   ${ "message" in e }
+            assign:
+              - map_e["message"]        : ${map_e["message"] + e.message}
+
+    - _check_if_body_in_exception_e     :   # Inspect the body of the exception for detailed error messages
+        switch:
+          - condition:   ${ "body" in e }
+            switch:
+              - condition:   ${ "error" in e.body }
+                switch:
+                  - condition:   ${ "message" in e.body.error }
+                    assign:
+                      - map_e["message"]: ${map_e["message"] + e.body.error.message}
+
+    - _check_if_operation_in_exception_e:   # Check if the exception contains operational context
+        switch:
+          - condition:   ${ "operation" in e }
+            switch:
+              - condition:   ${ "error" in e.operation }
+                switch:
+                  - condition:   ${ "context" in e.operation.error and "payload" in e.operation.error }
+                    assign:
+                      - map_e["error_message"] : ${map_e["error_message"] + e.operation.error.payload + "\n    \n" + e.operation.error.context }
+
+    - _check_if_message_empty:              # Ensure there's a default message if none is provided
+        switch:
+          - condition:   ${ map_e["message"] == "" }
+            assign:
+              - map_e["message"]        : "Unknown exception message structure. See exception."
+
+    - _check_if_error_message_empty     :   # Provide a default error message if none is detailed
+        switch:
+          - condition:   ${ map_e["error_message"] == "" }
+            assign:
+              - map_e["error_messageerror_message"]  : "Unknown exception message structure. See exception."
+
+
+    - _returnResult:                        # Return the populated map of exception details
+        return: ${map_e}
+
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+# Subroutine : sub_wait_until_create_entity_finished_and_return_row_numbers
+# Description: Waits for a BigQuery table to be fully created and available for queries, and returns the row count and byte size of the created table.
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_wait_until_create_entity_finished_and_return_row_numbers:
+    params: [project_id, location_id, dataset_id, table_name ]
+    steps:
+    - init_check_vars:                      # Initialize variables to monitor the creation status of a database entity
+        assign:
+          - inspected_row_numbers   : -1    # Default value indicating no rows found   
+          - size_bytes              : 0     # Amount of data in bytes                   
+          - waiting_seconds         : 2     # Interval to wait between checks           
+          - max_no_of_chek_cycles   : 240   # Maximum number of check cycles          
+          - no_of_chek_cycles       : 0     # Counter for the number of checks performed
+
+    - lookup_4_table_rows:                  # Looks up the current row count and byte size of the table to check if it is ready
+        try:
+            call: googleapis.bigquery.v2.jobs.query
+            args:
+                projectId: ${project_id}
+                body:
+                    defaultDataset  :
+                        datasetId   : ${dataset_id}
+                        projectId   : ${project_id}
+                    dryRun          : false
+                    location        : ${location_id}
+                    query           : ${ "SELECT COALESCE(MAX(row_count), -1), COALESCE(MAX(size_bytes), 0) FROM `" + project_id + "." + dataset_id + ".__TABLES__` WHERE table_id='" + table_name + "'" }
+                    useLegacySql    : false
+                    useQueryCache   : false
+            result: check_bq_sql_result
+        except:
+            as: e
+            steps:
+                - extract_map_info_from_lookup_4_table_rows_exception:
+                    assign:
+                      - map_e      : ${catch_exception_e(e)}
+                - return_from_lookup_4_table_rowsexception:
+                   return:
+                        - number_rows  : ${ inspected_row_numbers }
+                        - number_bytes : ${ size_bytes            }
+
+    - init_check_loop:
+        assign:
+          - no_of_chek_cycles     : ${ no_of_chek_cycles + 1 }
+          - inspected_row_numbers : ${ int( check_bq_sql_result.rows[0].f[0].v ) }
+          - size_bytes            : ${ int( check_bq_sql_result.rows[0].f[1].v ) }
+
+    - wait_until_available:                 # Continues to check until the table is ready or the maximum number of check cycles is reached
+        switch:
+          - condition:   ${ inspected_row_numbers == -1 and no_of_chek_cycles <= max_no_of_chek_cycles}
+            steps:
+                - wait_some_moments:
+                    call: sys.sleep
+                    args:
+                        seconds : ${ waiting_seconds }
+                    next: lookup_4_table_rows
+
+    - returnResult:
+        return:
+            - number_rows  : ${ inspected_row_numbers }
+            - number_bytes : ${ size_bytes            }
+

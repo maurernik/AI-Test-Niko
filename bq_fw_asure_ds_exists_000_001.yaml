@@ -1,0 +1,299 @@
+# bq_fw_asure_ds_exists_000_001
+# check if a dataset exits and if not create it
+# In terraform you need to escape the $$ or it will cause errors.
+main:
+  params: [args]
+  steps:
+    - read_runtime_args:
+        # Check runtime arguments
+        switch:
+          # check if dataset as arg
+          - condition: ${  "ds_info"        in args
+                       and "ds_label_info"  in args }
+            assign:
+              - project_id             : '${args.ds_info.project_id       }'
+              - dataset_id             : '${args.ds_info.dataset_id       }'
+              - location_id            : '${args.ds_info.location_id      }'
+              - description            : '${args.ds_info.description      }'
+              - friendlyName           : '${args.ds_info.friendlyName     }'
+
+              - ds_labels              : { "orga_domain"       : '${args.ds_label_info.orga_domain          }'
+                                         , "environment"       : '${args.ds_label_info.environment          }'
+                                         , "app_id"            : '${args.ds_label_info.app_id               }'
+                                         , "ds_location"       : '${text.to_lower(args.ds_info.location_id) }'
+                                         , "ds_name"           : '${args.ds_info.dataset_id                 }'
+                                         , "state"             : '${args.ds_label_info.state                }'
+                                         , "topic"             : '${args.ds_label_info.topic                }'
+                                         , "component"         : "dataset"
+                                         , "overall_version"   : '${args.ds_label_info.overall_version      }'
+                                         , "ds_version"        : '${args.ds_label_info.ds_version           }'
+                                         , "ds_release"        : '${args.ds_label_info.ds_release           }'
+                                         }
+
+              - id_filter_labels       : ${"labels.ds_name:"      + dataset_id 
+                                         + " labels.topic:"       + ds_labels["topic"       ]
+                                         + " labels.ds_location:" + ds_labels["ds_location" ]
+                                         + " labels.ds_release:"  + ds_labels["ds_release"  ]
+                                         + " labels.ds_version:"  + ds_labels["ds_version"  ]
+                                         + " labels.component:dataset"
+                                         }
+
+
+            next: sys_map_assignments
+
+          - condition: true
+            return:
+                - ret_stat :  "abortion"
+                - ret_code :  9990
+                - ret_msg  :  "Abortion due WRONG INPUT PARAMS in gwf module bq_fw_asure_ds_exists_000_001! (Params: struct ds_info, ds_label_info )."
+                - ret_json :  "[]"
+
+
+    - sys_map_assignments:
+        assign:
+          - seconds_to_wait                                   :  ${ int( (int(sys.now()) % 10) / 3 ) }
+          - map_init_info                                     :   { }
+          - module_name                                       : "bq_fw_asure_ds_exists_000_001"
+          - ix                                                : 0
+          - listResult                                        :   { }
+          - map_sys                                           :   { }
+          - map_sys["§GOOGLE_CLOUD_LOCATION§"               ] :  ${sys.get_env("GOOGLE_CLOUD_LOCATION"              )}
+          - map_sys["§GOOGLE_CLOUD_PROJECT_NUMBER§"         ] :  ${sys.get_env("GOOGLE_CLOUD_PROJECT_NUMBER"        )}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID§"  ] :  ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID" )}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"            ] :  ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_ID"           )}
+
+          - wf_all_like_this                                  : ${ "projects/" + map_sys["§GOOGLE_CLOUD_PROJECT_NUMBER§"] + "/locations/" + map_sys["§GOOGLE_CLOUD_LOCATION§"] + "/workflows/" + map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"] }
+          - wf_excactly_this                                  : ${ "projects/" + map_sys["§GOOGLE_CLOUD_PROJECT_NUMBER§"] + "/locations/" + map_sys["§GOOGLE_CLOUD_LOCATION§"] + "/workflows/" + map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"]  + "/executions/" + map_sys["§GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID§"] }
+
+    - wait_random_seconds:
+        call: sys.sleep
+        args:
+          seconds: 1
+
+    - loop_4_check_if_ds_exists_010:
+        for:
+          value: i
+          range: [1, 15]
+          steps:
+            - try_to_exec_module:
+                try:
+                    call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.list
+                    args:
+                        parent  : ${ wf_all_like_this }
+                        pageSize: 1
+                        view    : "FULL"
+                    result: listResult
+                except:
+                    as: e
+                    steps:
+                        - extract_map_info_from_cr_ds_exception_010:
+                            assign:
+                              - map_e      : ${catch_exception_e(e)}
+                        - return_wf_call_exception_error_010:
+                            return:
+                                - ret_stat :  "abortion"
+                                - ret_code :  ${map_e["code"]    }
+                                - ret_msg  : '${ "call:googleapis.bigquery.v2.datasets.insert:dataset_id: " + dataset_id + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                                - ret_json :  ${e }
+
+            - check_if_ds_exists_010:
+                switch:
+                  - condition:   ${ listResult.executions[0].name == wf_excactly_this }
+                    assign:
+                      - ix : ${i}
+                      - i  : 16
+
+                  - condition:  ${ listResult.executions[0].name != wf_excactly_this }
+                    call: sys.sleep
+                    args:
+                      seconds: ${ seconds_to_wait }
+
+    # -- check if dataset already exists
+    - find_dataset_in_list:
+        call: googleapis.bigquery.v2.datasets.list
+        args:
+            projectId: ${project_id}
+            all: true
+            filter: ${id_filter_labels}
+            maxResults: 1
+            #pageToken: ...
+        result: list_dataset_result
+
+    # -- leave if dataset already exists
+    - return_if_already_exists:
+        switch:
+          - condition:   ${  ("datasets" in list_dataset_result)  }
+            return: 
+                - ret_stat   :  "succeeded"
+                - ret_code   :  0
+                - ret_msg    :  "Dataset already exists."
+                - ret_json   : ${json.encode_to_string( ds_labels ) }
+                - ix                     : ${ix                 }
+                - module_name            : ${module_name        }
+                - wf_excactly_this       : ${wf_excactly_this   }
+                - wf_all_like_this       : ${wf_all_like_this   }
+                - map_sys                : ${map_sys            }
+                - list_workflows         : ${listResult         }
+                - seconds_to_wait        : ${seconds_to_wait    }
+
+    # -- create dataset if not exists
+    - try_to_execute_cr_ds:
+        try:
+            call: googleapis.bigquery.v2.datasets.insert
+            args:
+              projectId: ${project_id}
+              body:
+                location              : ${location_id}
+                description           : ${description}
+                friendlyName          : ${friendlyName}
+                labels                : ${ds_labels}
+                datasetReference      :
+                  datasetId           : ${dataset_id}
+                  projectId           : ${project_id}
+                access[].role         : "roles/bigquery.dataViewer"
+                access[].specialGroup : "projectReaders"
+            result: ds_insertResult
+        except:
+            as: e
+            steps:
+                - extract_map_info_from_cr_ds_exception:
+                    assign:
+                      - map_e         : ${catch_exception_e(e)}
+                - return_if_ds_already_exists:
+                    switch:
+                      - condition:   ${ map_e["code"] == 409 }    ##  code 409 ==> status: ALREADY_EXISTS
+                        return: 
+                            - ret_stat   :  "succeeded"
+                            - ret_code   :  0
+                            - ret_msg    :  "Dataset already exists."
+                            - ret_json   : ${json.encode_to_string( ds_labels ) }
+
+                - return_cr_ds_with_errors:
+                    return:
+                        - ret_stat    :  "abortion"
+                        - ret_code    :  ${ map_e["code"]   }
+                        - ret_msg     : '${ "call:googleapis.bigquery.v2.datasets.insert:dataset_id: " + dataset_id + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                        - ret_json    :  ${ e }
+
+    # wait until dataset is visible
+    - loop_4_check_if_ds_exists_020:
+        for:
+          value: i
+          range: [1, 15]
+          steps:
+            - try_to_exec_module_020:
+                try:
+                    call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.list
+                    args:
+                        parent  : ${ wf_all_like_this }
+                        pageSize: 1
+                        view    : "FULL"
+                    result: listResult
+                except:
+                    as: e
+                    steps:
+                        - extract_map_info_from_cr_ds_exception_020:
+                            assign:
+                              - map_e      : ${catch_exception_e(e)}
+                        - return_wf_call_exception_error_020:
+                            return:
+                                - ret_stat :  "abortion"
+                                - ret_code :  ${map_e["code"]    }
+                                - ret_msg  : '${ "call:googleapis.bigquery.v2.datasets.insert:dataset_id: " + dataset_id + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                                - ret_json :  ${e }
+
+            - check_if_ds_exists_020:
+                switch:
+                  - condition:   ${ listResult.executions[0].name == wf_excactly_this }
+                    assign:
+                      - ix : ${i}
+                      - i  : 16
+
+                  - condition:  ${ listResult.executions[0].name != wf_excactly_this }
+                    call: sys.sleep
+                    args:
+                      seconds: ${ seconds_to_wait }
+
+    # asure that dataset is there
+    - wait_some_moments:
+        call: sys.sleep
+        args:
+            seconds : 10 # 5 operations per 10 seconds => https://cloud.google.com/bigquery/quotas#:~:text=Your%20project%20can%20make%20up%20to%20five%20table%20metadata%20update%20operations%20per%2010%20seconds%20per%20table.%20This%20limit%20applies%20to%20all%20table%20metadata%20update%20operations%2C%20performed%20by%20the%20following%3A
+
+    # -- leave with new dataset
+    - returnOutput:
+            return: 
+                - ret_stat :  "succeeded"
+                - ret_code :  0
+                - ret_msg  : '${"Creation of dataset: " + dataset_id + " succeeded." }'
+                - ret_json :  ${ds_labels}
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  catch_exception_e
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+catch_exception_e:
+    params: [ e ]
+    steps:
+    - init_list_map_values:
+        assign:
+          - map_e                  : {}
+          - map_e["code"         ] : 999    # unknown error code
+          - map_e["message"      ] : ""
+          - map_e["error_message"] : ""
+          - map_e["tags"         ] : []
+
+    - check_if_code_in_exception_e:
+        switch:
+          - condition:   ${ "code" in e }
+            assign:
+              - map_e["code"]    : ${e.code}
+
+    - check_if_tags_in_exception_e:
+        switch:
+          - condition:   ${ "tags" in e }
+            assign:
+              - map_e["tags"]    : ${e.tags}
+
+    - check_if_message_in_exception_e:
+        switch:
+          - condition:   ${ "message" in e }
+            assign:
+              - map_e["message"] : ${map_e["message"] + e.message}
+
+    - check_if_body_in_exception_e:
+        switch:
+          - condition:   ${ "body" in e }
+            switch:
+              - condition:   ${ "error" in e.body }
+                switch:
+                  - condition:   ${ "message" in e.body.error }
+                    assign:
+                      - map_e["message"] : ${map_e["message"] + e.body.error.message}
+
+    - check_if_operation_in_exception_e:
+        switch:
+          - condition:   ${ "operation" in e }
+            switch:
+              - condition:   ${ "error" in e.operation }
+                switch:
+                  - condition:   ${ "context" in e.operation.error and "payload" in e.operation.error }
+                    assign:
+                      - map_e["error_message"] : ${map_e["error_message"] + e.operation.error.payload + "\n    \n" + e.operation.error.context }
+
+    - check_if_message_empty:
+        switch:
+          - condition:   ${ map_e["message"] == "" }
+            assign:
+              - map_e["message"]       : "Unknown exception message structure. See exception."
+
+    - check_if_error_message_empty:
+        switch:
+          - condition:   ${ map_e["error_message"] == "" }
+            assign:
+              - map_e["error_messageerror_message"]       : "Unknown exception message structure. See exception."
+
+
+    - returnResult:
+        return: ${map_e}
+
+

@@ -1,0 +1,367 @@
+# -- bq_fw_main_wf_ctrl_000_001 -----------------------------------------
+# -- main ctrl and steering workflow
+# -- In terraform you need to escape the $$ or it will cause errors.
+
+main:
+  params: [args]
+  steps:
+    - read_runtime_args:
+        # Check runtime arguments
+        switch:
+          - condition: ${ not ("bqfw_info"      in args)
+                       or not ("specific_info"  in args)}
+            return:
+                - ret_stat :  "abortion"
+                - ret_code :  9990
+                - ret_msg  :  "Abortion due WRONG INPUT PARAMS in gwf module bq_fw_main_wf_ctrl_000_001! (Params: bqfw_info, specific_info )."
+                - ret_json :  "[]"
+
+          - condition:     ${  "init_info"          in args }
+            switch:
+              - condition: ${  "gwf_init_ts_as_ns"  in args["init_info"] }
+                assign:
+                  - map_init_info                        : ${args.init_info                         }
+                  - gwf_init_ts_seconds                  : ${double(args["init_info"]["gwf_init_ts_as_ns"] / 1000000000) }
+                  - map_init_info["gwf_init_ts_seconds"] : ${gwf_init_ts_seconds }
+
+            next: module_calling_param_assignments
+
+          - condition: ${ not ( "init_info"          in args)
+                       or not ( "gwf_init_ts_as_ns"  in args["init_info"]) }
+            assign:
+              - gwf_init_ts_seconds                               :  ${sys.now()}
+              - map_init_info                                     :   { }
+              - map_init_info["gwf_init_ts_as_ns"               ] :  ${ string( int( gwf_init_ts_seconds * 1000000000 ) ) }
+              - map_init_info["gwf_init_ts_seconds"             ] :  ${gwf_init_ts_seconds}
+
+            next: module_calling_param_assignments
+
+    - module_calling_param_assignments:
+        assign:
+          - map_bqfw_info                                     :  ${args.bqfw_info                                                                }
+          - map_specific_info                                 :  ${args.specific_info                                                            }
+
+          - gwf_init_ts_as_utc_str                            :  ${time.format(gwf_init_ts_seconds)                                              }
+          - map_init_info["gwf_init_ts_as_cet_str"          ] :  ${time.format(gwf_init_ts_seconds, "CET")                                       }
+          - map_init_info["gwf_init_ts_as_utc_str"          ] :  ${gwf_init_ts_as_utc_str                                                        }
+          - map_init_info["gwf_init_ts"                     ] :  ${"CAST('" + text.substring(gwf_init_ts_as_utc_str, 0, 26) + "' AS TIMESTAMP)"  }
+          - map_init_info["gwf_init_ts_seconds"             ] :  ${gwf_init_ts_seconds                                                           }
+
+          - formatted                                         : '${ text.substring( text.replace_all_regex( map_init_info["gwf_init_ts_as_cet_str"], "[^0-9]", "" ), 0, 14) + text.substring(map_init_info["gwf_init_ts_as_ns"], 10, 19 )  }'
+          - map_init_info["gwf_init_ts_4_suffix"            ] : '${ text.substring(formatted, 0, 8) + "_" + text.substring(formatted, 8, 14 ) + "_" + text.substring(formatted, 14, 24 )  }'
+
+    # Variables injected from terraform
+    - terraform_assignments:
+        assign:
+          - current_overall_versioning            : "000001"
+         #- current_overall_versioning            : "000001"
+          - current_environment                   : "dev"
+         #- current_environment                   : "dev"
+          - metadata_gwf_ctrl_topic_name          : "metadata_gwf_ctrl"
+         #- metadata_gwf_ctrl_topic_name          : "metadata_gwf_ctrl"
+          - current_version_metadata_gwf_ctrl_gwf : "000_001"
+         #- current_version_metadata_gwf_ctrl_gwf : "000_001"
+
+          - ds_location_id                        : "EU"
+
+          - ds_metadata_gwf_ctrl_dataset_id       : ${metadata_gwf_ctrl_topic_name + "_" + text.replace_all( current_version_metadata_gwf_ctrl_gwf, ".", "_") }
+
+          - gwf_modules_to_be_executed            : [ "bq_fw_check_wf_init_000_001"
+                                                    , "bq_fw_def_all_gwf_steps_000_001"
+                                                    , "bq_fw_exec_all_app_steps_000_001" ]
+
+    # System Variables
+    - sys_map_assignments:
+        assign:
+          - map_sys                                           :  { }
+          - map_sys["§GOOGLE_CLOUD_LOCATION§"               ] :  ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
+          - map_sys["§GOOGLE_CLOUD_PROJECT_ID§"             ] :  ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"            ] :  ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_ID")}
+
+    - general_placeholder_assignments:
+        assign:
+          - map_bqfw_info["outlet_id_list"                  ] :  ${clean_input_params_str_list_outlets(map_bqfw_info["outlet_id_list" ])}
+          - map_bqfw_info["outlet_id_list_as_sql_condition" ] :  " > 0"
+          - ret_json                                          :  { }
+          - res_gwf                                           :  { }
+
+
+    - check_outlet_id_list_4_sort:
+        switch:
+          - condition: ${ map_bqfw_info["outlet_id_list"] != "all" }
+            steps:
+                - sort_outlet_id_list:
+                    assign:
+                      - map_bqfw_info["outlet_id_list"]                 : ${get_join_str_from_list(sub_num_list_bubble_sort(get_num_list_from_str_outlets(map_bqfw_info["outlet_id_list"] ) ) )}
+                      - map_bqfw_info["outlet_id_list_as_sql_condition"]: ${" IN ( " + map_bqfw_info["outlet_id_list" ] + " )"}
+
+    - loop_to_execute_all_modules:
+        for:
+          value: module_name
+          in: ${gwf_modules_to_be_executed}
+          steps:
+            - try_to_exec_module:
+                try:
+                    call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+                    args:
+                        workflow_id     : ${module_name                            }
+                        location        : ${map_sys["§GOOGLE_CLOUD_LOCATION§"     ]}
+                        project_id      : ${map_sys["§GOOGLE_CLOUD_PROJECT_ID§"   ]}
+                        argument:
+                          bqfw_info     : ${ map_bqfw_info     }
+                          init_info     : ${ map_init_info     }
+                          specific_info : ${ map_specific_info }
+                    result: res_gwf
+                except:
+                    as: e
+                    steps:
+                        - extract_map_info_from_call_module_exception_010:
+                            assign:
+                              - map_e      : ${catch_exception_e(e)}
+                        - return_call_module_with_errors:
+                            return:
+                                - ret_stat :  "abortion"
+                                - ret_code :  ${ map_e["code"]   }
+                                - ret_msg  : '${ "gwf_call:" + module_name + ": " + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                                - ret_json :  ${ map.merge_nested(map.merge_nested(map.merge_nested(e, map_bqfw_info), map_init_info), map_specific_info) }
+                        
+            - copy_exec_module_result_to_call_ret_json:
+                assign:
+                    - ret_json[module_name] : '${res_gwf}'
+
+            - check_on_try_to_exec_module_error:
+                switch:
+                  # check for execution errors
+                  - condition: ${  res_gwf[1].ret_code > 0 }
+                    steps:
+                        - if_error_4_module_stop:
+                            return:
+                                - ret_stat :  "error"
+                                - ret_code :  ${res_gwf[1].ret_code  }
+                                - ret_msg  : '${"Module: " + module_name + " aborted due Error in executing! \n" + res_gwf[2].ret_msg  }'
+                                - ret_json :  ${ret_json }
+
+                  - condition: ${ module_name == "bq_fw_check_wf_init_000_001" }
+                    steps:
+                        - assign_map_init_info_gwf_log_wf_id:
+                            assign:
+                              - map_init_info["gwf_log_wf_id"     ] :  ${ res_gwf[3].ret_json["§gwf_log_wf_id§"      ] }
+                              - map_init_info["gwf_log_process_id"] :  ${ res_gwf[3].ret_json["§gwf_log_process_id§" ] }
+
+
+
+    #---- step  returnOutput -----------------------------------------------------------------------------------------------------------
+    - returnOutput:
+        return:
+            - ret_stat :  "succeeded"
+            - ret_code :  0
+            - ret_msg  : '${ map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"] + " successfully completed :-) " }'
+            - ret_json :  ${ res_gwf[3].ret_json }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  catch_exception_e
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+catch_exception_e:
+    params: [ e ]
+    steps:
+    - init_list_map_values:
+        assign:
+          - map_e                  : {}
+          - map_e["code"         ] : 999    # unknown error code
+          - map_e["message"      ] : ""
+          - map_e["error_message"] : ""
+          - map_e["tags"         ] : []
+
+    - check_if_code_in_exception_e:
+        switch:
+          - condition:   ${ "code" in e }
+            assign:
+              - map_e["code"]    : ${e.code}
+
+    - check_if_tags_in_exception_e:
+        switch:
+          - condition:   ${ "tags" in e }
+            assign:
+              - map_e["tags"]    : ${e.tags}
+
+    - check_if_message_in_exception_e:
+        switch:
+          - condition:   ${ "message" in e }
+            assign:
+              - map_e["message"] : ${map_e["message"] + e.message}
+
+    - check_if_body_in_exception_e:
+        switch:
+          - condition:   ${ "body" in e }
+            switch:
+              - condition:   ${ "error" in e.body }
+                switch:
+                  - condition:   ${ "message" in e.body.error }
+                    assign:
+                      - map_e["message"] : ${map_e["message"] + e.body.error.message}
+
+    - check_if_operation_in_exception_e:
+        switch:
+          - condition:   ${ "operation" in e }
+            switch:
+              - condition:   ${ "error" in e.operation }
+                switch:
+                  - condition:   ${ "context" in e.operation.error and "payload" in e.operation.error }
+                    assign:
+                      - map_e["error_message"] : ${map_e["error_message"] + e.operation.error.payload + "\n    \n" + e.operation.error.context }
+
+    - check_if_message_empty:
+        switch:
+          - condition:   ${ map_e["message"] == "" }
+            assign:
+              - map_e["message"]       : "Unknown exception message structure. See exception."
+
+    - check_if_error_message_empty:
+        switch:
+          - condition:   ${ map_e["error_message"] == "" }
+            assign:
+              - map_e["error_messageerror_message"]       : "Unknown exception message structure. See exception."
+
+
+    - returnResult:
+        return: ${map_e}
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  clean_input_params_str_list_outlets
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+clean_input_params_str_list_outlets:
+  params: [str_outlets]
+  steps:
+    - clean_001:
+        assign:
+          - str_outlets :  ${text.to_lower(str_outlets                                                ) }
+          - str_outlets :  ${text.replace_all_regex( str_outlets, "[[:space:]]+" , ""                 ) }
+          - str_outlets :  ${text.replace_all_regex( str_outlets, ",,+"          , ","                ) }
+
+    - check_if_keyword_all_in_str:
+        switch:
+          - condition: ${text.match_regex(str_outlets, "all" ) }
+            return: "all"
+
+    - clean_002:
+        assign:
+          - str_outlets :  ${text.replace_all_regex( str_outlets, "[^0-9,]+"         , ""             ) }
+          - str_outlets :  ${text.replace_all_regex( str_outlets, ",,+"              , ","            ) }
+            
+    - check_if_str_outlets_is_empty_str:
+        switch:
+          - condition: ${ str_outlets == "" }
+            return: "all"
+
+    - return_num_outlet_ids:
+        return: ${str_outlets}
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_num_list_from_str_outlets
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_num_list_from_str_outlets:
+  params: [str_outlets]
+  steps:
+    - init_a_new_list:
+        assign:
+          - lst_new_nr      : ${ text.split(str_outlets, ",") }
+            
+    - loop_to_get_int_outeld_ids:
+        for:
+          value: i
+          range: ${ [0, len(lst_new_nr) - 1] }
+          steps:
+            - concat_next_element:
+                assign:
+                  - lst_new_nr[i]: ${text.replace_all_regex(lst_new_nr[i], "[^0-9]", "") }
+                  - lst_new_nr[i]: ${int(lst_new_nr[i]) }
+
+    - return_num_outlet_ids:
+        return: ${lst_new_nr}
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_num_list_bubble_sort
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_num_list_bubble_sort:
+  params: [lst_nr]
+  steps:
+    - init_a_new_list:
+        assign:
+          - lst_nr_1        : ${len(lst_nr) - 1}
+          - lst_nr_2        : ${len(lst_nr) - 2}
+
+    - loop_outer_num_list_sort:
+        for:
+          value: n
+          range: ${ [0, lst_nr_1] }
+          steps:
+            - loop_inner_num_list_sort:
+                for:
+                  value: i
+                  range: ${ [0, lst_nr_2] }
+                  steps:
+                    - set_j:
+                        assign:
+                          - j: ${i}
+                          - j: ${j + 1}
+                    - compare_and_swap:
+                        switch:
+                          - condition: ${ lst_nr[i] > lst_nr[j] }
+                            steps:
+                                - swap_list_elements:
+                                    assign:
+                                      - temp     : ${lst_nr[i]}
+                                      - lst_nr[i]: ${lst_nr[j]}
+                                      - lst_nr[j]: ${temp}
+
+    - append_last_list_element:
+        assign:
+          - lst_new_nr      : []
+          - lst_new_nr      : ${list.concat(lst_new_nr, lst_nr[0])}
+
+    - loop_to_sort_out_doubles:
+        for:
+          value: i
+          range: ${ [1, lst_nr_1] }
+          steps:
+            - set_h:
+                assign:
+                  - h: ${i}
+                  - h: ${h - 1}
+            - compare_and_add_to_new_list:
+                switch:
+                  - condition: ${lst_nr[i] > lst_nr[h]}
+                    steps:
+                        - add_new_list_element:
+                            assign:
+                              - lst_new_nr: ${list.concat(lst_new_nr, lst_nr[i])}
+    
+    - returnList:
+        return: ${lst_new_nr}
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_join_str_from_list
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_join_str_from_list:
+  params: [lst]
+  steps:
+    - init_a_new_string:
+        assign:
+          - str_list  : ${string(lst[0])}
+          - separator : ","
+          - lst_nr_1  : ${len(lst) - 1}
+
+    - loop_to_join_list_elements:
+        for:
+          value: i
+          range: ${ [1, lst_nr_1] }
+          steps:
+            - concat_next_element:
+                assign:
+                  - str_list: ${str_list + separator + string(lst[i]) }
+
+    - returnList:
+        return: ${str_list}
+

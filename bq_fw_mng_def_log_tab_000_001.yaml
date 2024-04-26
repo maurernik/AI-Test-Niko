@@ -1,0 +1,469 @@
+# -- bq_fw_mng_def_log_tab_000_001 -----------------------------------------
+# -- bq framework - manage all gwf step defintions in the table t_500_log_gwf_job_definitions
+# -- §META_CURRENT_GCP_PROJECT§.§META_CURRENT_METADATA_GWF_CTRL_DATASET§.t_500_log_gwf_job_definitions
+# -- Module is called from bq_fw_def_all_gwf_steps_000_001
+# -- In terraform you need to escape the $$ or it will cause errors.
+
+main:
+  params: [args]
+  steps:
+    - read_runtime_args:
+        # Check runtime arguments
+        switch:
+          - condition: ${  "ask_for" in args
+                       and "par_map" in args }
+            assign:
+              - ask_for : ${args.ask_for }
+              - par_map : ${args.par_map }
+
+            next: assign_sepcific_placeholders_main
+
+          - condition: true
+            return:
+                - ret_stat   :  "abortion"
+                - ret_code   :  9990
+                - ret_msg    :  "Abortion due WRONG INPUT PARAMS in gwf bq_fw_mng_def_log_tab_000_001! (Params: ask_for (string), par_map (map) )."
+                - ret_json   :  "[]"
+
+    - assign_sepcific_placeholders_main:
+        switch:
+          - condition: ${ ask_for == "init_map_def_all" }
+            steps:
+                - assignments_4_init_map_def_all:
+                    assign:
+                      - par_map : ${init_map_def_all(par_map) }
+                - return_if_init_map_def_all:
+                    return: ${ par_map}
+            next: returnOutput
+
+          - condition: ${ ask_for == "get_t500_definition_logging_insert_head" }
+            steps:
+                - assignments_4_get_t500_definition_logging_insert_head:
+                    assign:
+                      - ins_sql_head_str : ${get_logging_insert_head(par_map) }
+                - return_if_get_t500_definition_logging_insert_head:
+                    return: ${ ins_sql_head_str }
+            next: returnOutput
+
+          - condition: ${ ask_for == "get_definition_logging_insert_payload" }
+            steps:
+                - assignments_4_get_definition_logging_insert_payload:
+                    assign:
+                      - ins_sql_payload_str : ${get_logging_insert_payload(par_map) }
+                - return_if_get_definition_logging_insert_payload:
+                    return: ${ ins_sql_payload_str }
+            next: returnOutput
+
+    #---- step  returnOutput -----------------------------------------------------------------------------------------------------------
+    - returnOutput:
+        return:  ${ par_map }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_definition_log_tab_infos
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_definition_log_tab_infos:
+    params: [ p_special_log_struct_name ]
+    steps:
+    - init_definition_log_tab_assignments_000:
+        assign:
+           - log_table_name                     :   "t_500_log_gwf_job_definitions"
+           - lst_log_table_main_columns         : [ "gwf_log_wf_id"
+                                                  , "gwf_log_process_id"
+                                                  , "gwf_log_task_id"
+                                                  , "gwf_log_objective_id"
+                                                  , "gwf_exec_script_version"
+                                                  , "gwf_process_id"
+                                                  , "gwf_process_name"
+                                                  , "gwf_process_topic_list"
+                                                  , "gwf_process_version"
+                                                  , "gwf_task_id"
+                                                  , "gwf_task_name"
+                                                  , "gwf_objective_id"
+                                                  , "gwf_objective_name"
+                                                  , "task_period_type"
+                                                  , "task_period_value"
+                                                  , "gwf_topic"
+                                                  , "program_id"
+                                                  , "outlet_id_list"
+                                                  , "outlet_id_list_as_sql_condition"
+                                                  , "ref_date_id"
+                                                  , "eob_date_id"
+                                                  , "gwf_step_id"
+                                                  , "gwf_start_id"
+                                                  , "gwf_stop_if"
+                                                  , "gwf_exec_if"
+                                                  , "gwf_retries"
+                                                  , "gwf_step_entity_specs"
+                                                  , "${ p_special_log_struct_name }"
+                                                  , "process_phase_id"
+                                                  , "process_phase_name"
+                                                  , "process_renew_or_continue"
+                                                  , "gwf_renew_or_continue"
+                                                  , "bq_renew_or_continue_entity"
+                                                  , "gwf_re_run"
+                                                  , "gwf_finished"
+                                                  , "gwf_succeded"
+                                                  , "gwf_start_ts"
+                                                  , "gwf_end_ts"
+                                                  , "gwf_duration_microsecs"
+                                                  , "gwf_record_creator"
+                                                  , "gwf_record_create_ts"
+                                                  , "gwf_init_ts"
+                                                  , "gwf_init_ts_as_cet_str"
+                                                  , "gwf_init_ts_as_ns"
+                                                  , "gwf_init_ts_4_suffix"
+                                                  , "gwf_error_message"
+                                                  , "gwf_status_id"
+                                                  , "gwf_status_name"
+                                                  ]
+
+           - lst_gwf_step_entity_specs_columns  : [ "gwf_todo_entity_list_id"
+                                                  , "gwf_todo_entity_list_name"
+                                                  , "gwf_todo_entity_list_type"
+                                                  , "gwf_todo_entity_list_version"
+                                                  , "gwf_entity_name_wp"
+                                                  , "gwf_entity_name_sp"
+                                                  , "gwf_entity_type"
+                                                  , "gwf_entity_placeholder_mappings"
+                                                  , "gwf_entity_content_wp"
+                                                  , "gwf_entity_content_sp"
+                                                  , "gwf_bq_datasets_maps"
+                                                  , "gwf_other_misc_maps"
+                                                  , "gwf_script_bucket_name_wp"
+                                                  , "gwf_script_bucket_name_sp"
+                                                  , "gwf_entity_file_path_or_uri_or_script_wp"
+                                                  , "gwf_entity_file_path_or_uri_or_script_sp"
+                                                  , "gwf_operation_type"
+                                                  ]
+
+           - special_columns                    : []
+           - external_data_load_specs_columns   : [ "gwf_load_external_datasource_id"
+                                                  , "gwf_load_external_prepare_id"
+                                                  , "gwf_load_external_prepare_ts"
+                                                  , "gwf_load_external_prepare_date"
+                                                  , "gwf_file_to_load_bucket_name"
+                                                  , "gwf_file_to_load_file_name"
+                                                  ]
+
+           - gwf_lfv_specs_columns              : [ "new_cost_records"
+                                                  , "new_depr_periods"
+                                                  , "mm_abs_calc"
+                                                  , "date_id_twa_calc_from"
+                                                  , "date_id_twa_calc_to"
+                                                  , "variants"
+                                                  ]
+
+    - init_definition_log_tab_assignments_001:
+        assign:
+           - map_log_table_main_cols_data_types : {}
+           - map_log_table_main_cols_data_types   [ "gwf_log_wf_id"                             ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_log_process_id"                        ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_log_task_id"                           ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_log_objective_id"                      ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_exec_script_version"                   ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_process_id"                            ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_process_name"                          ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_process_topic_list"                    ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_process_version"                       ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_task_id"                               ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_task_name"                             ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_objective_id"                          ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_objective_name"                        ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "task_period_type"                          ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "task_period_value"                         ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_topic"                                 ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "program_id"                                ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "outlet_id_list"                            ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "outlet_id_list_as_sql_condition"           ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "ref_date_id"                               ] : "DATE"
+           - map_log_table_main_cols_data_types   [ "eob_date_id"                               ] : "DATE"
+           - map_log_table_main_cols_data_types   [ "gwf_step_id"                               ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_start_id"                              ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_stop_if"                               ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_exec_if"                               ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_retries"                               ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_step_entity_specs"                     ] : "STRUCT"
+           - map_log_table_main_cols_data_types   [ "${ p_special_log_struct_name }"            ] : "STRUCT"
+           - map_log_table_main_cols_data_types   [ "process_phase_id"                          ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "process_phase_name"                        ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "process_renew_or_continue"                 ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_renew_or_continue"                     ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "bq_renew_or_continue_entity"               ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_re_run"                                ] : "BOOL"
+           - map_log_table_main_cols_data_types   [ "gwf_finished"                              ] : "BOOL"
+           - map_log_table_main_cols_data_types   [ "gwf_succeded"                              ] : "BOOL"
+           - map_log_table_main_cols_data_types   [ "gwf_start_ts"                              ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_end_ts"                                ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_duration_microsecs"                    ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_record_creator"                        ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_record_create_ts"                      ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts"                               ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts_as_cet_str"                    ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts_as_ns"                         ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts_4_suffix"                      ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_error_message"                         ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_status_id"                             ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_status_name"                           ] : "STRING"
+
+
+    - init_definition_log_tab_assignments_002:
+        assign:
+           - map_step_entity_specs_cols_data_types: {}
+           - map_step_entity_specs_cols_data_types[ "gwf_todo_entity_list_id"                   ] : "INT64"
+           - map_step_entity_specs_cols_data_types[ "gwf_todo_entity_list_name"                 ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_todo_entity_list_type"                 ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_todo_entity_list_version"              ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_name_wp"                        ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_name_sp"                        ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_type"                           ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_placeholder_mappings"           ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_content_wp"                     ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_content_sp"                     ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_bq_datasets_maps"                      ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_other_misc_maps"                       ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_script_bucket_name_wp"                 ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_script_bucket_name_sp"                 ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_file_path_or_uri_or_script_wp"  ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_entity_file_path_or_uri_or_script_sp"  ] : "STRING"
+           - map_step_entity_specs_cols_data_types[ "gwf_operation_type"                        ] : "STRING"
+
+           - external_data_load_specs_data_types : {}
+           - external_data_load_specs_data_types   [ "gwf_load_external_datasource_id"           ] : "INT64"
+           - external_data_load_specs_data_types   [ "gwf_load_external_prepare_id"              ] : "INT64"
+           - external_data_load_specs_data_types   [ "gwf_load_external_prepare_ts"              ] : "TIMESTAMP"
+           - external_data_load_specs_data_types   [ "gwf_load_external_prepare_date"            ] : "DATE"
+           - external_data_load_specs_data_types   [ "gwf_file_to_load_bucket_name"              ] : "STRING"
+           - external_data_load_specs_data_types   [ "gwf_file_to_load_file_name"                ] : "STRING"
+
+           - gwf_lfv_specs_data_types           : {}
+           - gwf_lfv_specs_data_types             [ "new_cost_records"                          ] : "INT64"
+           - gwf_lfv_specs_data_types             [ "new_depr_periods"                          ] : "INT64"
+           - gwf_lfv_specs_data_types             [ "mm_abs_calc"                               ] : "INT64"
+           - gwf_lfv_specs_data_types             [ "date_id_twa_calc_from"                     ] : "DATE"
+           - gwf_lfv_specs_data_types             [ "date_id_twa_calc_to"                       ] : "DATE"
+           - gwf_lfv_specs_data_types             [ "variants"                                  ] : "INT64"
+
+    - returnResult:
+        return:
+          - log_table_name                          : ${ log_table_name                         }
+          - lst_log_table_main_columns              : ${ lst_log_table_main_columns             }
+          - lst_gwf_step_entity_specs_columns       : ${ lst_gwf_step_entity_specs_columns      }
+          - lst_log_table_special_columns           : ${ if( (p_special_log_struct_name == "external_data_load_specs"), external_data_load_specs_columns   , if( (p_special_log_struct_name == "gwf_lfv_specs"), gwf_lfv_specs_columns   , []) ) }
+          - map_log_table_main_cols_data_types      : ${ map_log_table_main_cols_data_types     }
+          - map_step_entity_specs_cols_data_types   : ${ map_step_entity_specs_cols_data_types  }
+          - map_log_table_spec_cols_data_types      : ${ if( (p_special_log_struct_name == "external_data_load_specs"), external_data_load_specs_data_types, if( (p_special_log_struct_name == "gwf_lfv_specs"), gwf_lfv_specs_data_types, []) ) }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  init_map_def_all
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+init_map_def_all:
+    params: [ par_map ]
+    steps:
+    - assign_init_map_def_all:
+        assign:
+          - definition_log_tab_infos                : ${ get_definition_log_tab_infos( par_map["§special_log_struct_name§"] ) }
+          - par_map[ "§log_table_name§" ]           : ${ definition_log_tab_infos[0].log_table_name                           }
+          - lst_log_table_main_columns              : ${ definition_log_tab_infos[1].lst_log_table_main_columns               }
+          - lst_gwf_step_entity_specs_columns       : ${ definition_log_tab_infos[2].lst_gwf_step_entity_specs_columns        }
+          - lst_log_table_special_columns           : ${ definition_log_tab_infos[3].lst_log_table_special_columns            }
+          - map_log_table_main_cols_data_types      : ${ definition_log_tab_infos[4].map_log_table_main_cols_data_types       }
+          - map_step_entity_specs_cols_data_types   : ${ definition_log_tab_infos[5].map_step_entity_specs_cols_data_types    }
+          - map_log_table_spec_cols_data_types      : ${ definition_log_tab_infos[6].map_log_table_spec_cols_data_types       }
+
+    - loop_assign_init_map_def_all_with_main_columns:
+        for:
+          value: column_name
+          in: ${ lst_log_table_main_columns }
+          steps:
+            - assign_init_map_def_all_main_columns:
+                assign:
+                  - par_map[ "§" + column_name + "§" ]  : ""
+
+    - loop_assign_init_map_def_all_with_special_columns:
+        for:
+          value: column_name
+          in: ${ lst_log_table_special_columns }
+          steps:
+            - assign_init_map_def_all_special_columns:
+                assign:
+                  - par_map[ "§" + column_name + "§" ]  : ""
+
+    - returnResult:
+        return: ${ par_map }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_logging_insert_head
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_logging_insert_head:
+    params: [ par_map ]
+    steps:
+    - assign_definition_log_tab_infos:
+        assign:
+          - special_log_struct_name                 : ${ par_map["§special_log_struct_name§"]                  }
+          - definition_log_tab_infos                : ${ get_definition_log_tab_infos( par_map["§special_log_struct_name§"] ) }
+          - log_table_name                          : ${ definition_log_tab_infos[0].log_table_name                           }
+          - lst_log_table_main_columns              : ${ definition_log_tab_infos[1].lst_log_table_main_columns               }
+          - lst_gwf_step_entity_specs_columns       : ${ definition_log_tab_infos[2].lst_gwf_step_entity_specs_columns        }
+          - lst_log_table_special_columns           : ${ definition_log_tab_infos[3].lst_log_table_special_columns            }
+          - map_log_table_main_cols_data_types      : ${ definition_log_tab_infos[4].map_log_table_main_cols_data_types       }
+          - map_step_entity_specs_cols_data_types   : ${ definition_log_tab_infos[5].map_step_entity_specs_cols_data_types    }
+          - map_log_table_spec_cols_data_types      : ${ definition_log_tab_infos[6].map_log_table_spec_cols_data_types       }
+          - comma_placeholder                       : "( "
+
+          - ins_sql : ${  "\nINSERT INTO `" + par_map["§META_CURRENT_GCP_PROJECT§"] + "." + par_map["§META_TEMP_METADATA_GWF_CTRL_DATASET§"] + "." + par_map["temp_definitions_table"] + "` " }
+
+    - loop_build_logging_insert_head:
+        for:
+          value: column_name
+          in: ${ lst_log_table_main_columns }
+          steps:
+            - subst_all_patterns:
+                try:
+                  assign:
+                    - ins_sql           : ${ ins_sql + if( ( column_name != par_map["§special_log_struct_name§"] or column_name == par_map["§special_log_struct_name§"] and par_map["§special_log_struct_name§"] != "none" ) ,
+                                                           ("\n" + comma_placeholder + " " + column_name), "" )  }
+                    - comma_placeholder : ", "
+
+                except:
+                    as: e
+                    steps:
+                        - debug_info_loop_substitute_pattern_in_string:
+                            call: sys.log
+                            args:
+                              data: 
+                                - ret_msg : '${ "EXCEPTION-ERROR:Mth-get_logging_insert_head: Empty value for column_name: " + column_name }'
+                                - e       :  ${e}
+                              severity: "ERROR" # Optional
+                        - unhandled_exception_4_loop_build_definition_logging_insert_head: 
+                            raise: ${e}
+
+    - returnResult:
+        return: ${ ins_sql + "\n)" }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_logging_insert_payload
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_logging_insert_payload:
+    params: [ par_map ]
+    steps:
+    - assign_definition_log_tab_infos:
+        assign:
+          - definition_log_tab_infos                : ${ get_definition_log_tab_infos( par_map["§special_log_struct_name§"] ) }
+          - log_table_name                          : ${ definition_log_tab_infos[0].log_table_name                           }
+          - lst_log_table_main_columns              : ${ definition_log_tab_infos[1].lst_log_table_main_columns               }
+          - lst_gwf_step_entity_specs_columns       : ${ definition_log_tab_infos[2].lst_gwf_step_entity_specs_columns        }
+          - lst_log_table_special_columns           : ${ definition_log_tab_infos[3].lst_log_table_special_columns            }
+          - map_log_table_main_cols_data_types      : ${ definition_log_tab_infos[4].map_log_table_main_cols_data_types       }
+          - map_step_entity_specs_cols_data_types   : ${ definition_log_tab_infos[5].map_step_entity_specs_cols_data_types    }
+          - map_log_table_spec_cols_data_types      : ${ definition_log_tab_infos[6].map_log_table_spec_cols_data_types       }
+          - comma_placeholder                       : " "
+
+          - ins_sql                                 : "\nSELECT"
+
+    - loop_build_definition_logging_insert_payload:
+        for:
+          value: column_name
+          in: ${ lst_log_table_main_columns }
+          steps:
+            - subst_all_patterns:
+                try:
+                    switch:
+                      - condition: ${ column_name != "gwf_step_entity_specs" and column_name != par_map["§special_log_struct_name§"] and column_name != "none"  }
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_row_field( comma_placeholder, column_name, map_log_table_main_cols_data_types[column_name], par_map["§" + column_name + "§"] )  }
+                        next: set_comma_placeholder_to_comma
+                      
+                      - condition: ${ column_name == "gwf_step_entity_specs" }
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_struct_block( comma_placeholder, column_name, lst_gwf_step_entity_specs_columns, map_step_entity_specs_cols_data_types, par_map )  }
+                        next: set_comma_placeholder_to_comma
+                      
+                      - condition: ${ column_name == par_map["§special_log_struct_name§"] and par_map["§special_log_struct_name§"] != "none"  }
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_struct_block( comma_placeholder, column_name, lst_log_table_special_columns    , map_log_table_spec_cols_data_types   , par_map )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: true
+                        next: set_comma_placeholder_to_comma
+
+                except:
+                    as: e
+                    steps:
+                        - debug_info_loop_substitute_pattern_in_string:
+                            call: sys.log
+                            args:
+                              data: 
+                                - ret_msg : '${ "EXCEPTION-ERROR:Mth-get_logging_insert_payload(main): Empty value for column_name: " + column_name + "\n" }'
+                                - e       :  ${e}
+                              severity: "ERROR" # Optional
+                        - unhandled_exception_4_loop_build_definition_logging_insert_payload: 
+                            raise: ${e}
+
+            - set_comma_placeholder_to_comma:
+                assign:
+                  - comma_placeholder : ", "
+
+
+    - returnResult:
+        return: ${ ins_sql + "\n" }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_typed_map_content_4_row_field
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_typed_map_content_4_row_field:
+    params: [ p_comma_placeholder, p_column_name, p_column_type, p_column_content ]
+    steps:
+    - assign_helper_vars_get_typed_payload_row:
+        assign:
+          - column_content  : ${ default( p_column_content, "null")  }
+          - column_content  : ${ if( (p_column_type in ["TIMESTAMP", "DATE"] and p_column_content == "" ), "null", column_content)  }
+          - str_delimiter   : ${ if( (p_column_type in ["STRING", "TIMESTAMP", "DATE"] and p_column_content != null ), "'", " ")  }
+          - payload_row     : ${ "\n" + p_comma_placeholder + " CAST(" + str_delimiter + column_content + str_delimiter + " AS " + p_column_type + ") AS " + p_column_name }
+
+    - returnResult:
+        return: ${ payload_row }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_typed_map_content_4_struct_block
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_typed_map_content_4_struct_block:
+    params: [  p_comma_placeholder, p_struct_name, p_lst_column_names, p_map_column_types, p_map_column_contents ]
+    steps:
+    - init_get_typed_map_content_4_struct_block:
+        assign:
+          - ins_sql                     : ${ "\n" + p_comma_placeholder + " STRUCT(" }
+          - l_comma_placeholder           : "  "
+    
+    
+    - loop_build_typed_struct_payload_block:
+        for:
+          value: column_name
+          in: ${ p_lst_column_names }
+          steps:
+            - subst_all_patterns:
+                try:
+                    assign:
+                    - ins_sql           : ${ ins_sql + get_typed_map_content_4_row_field( l_comma_placeholder, column_name, p_map_column_types[column_name], p_map_column_contents["§" + column_name + "§"] ) }
+                    - l_comma_placeholder : ", "
+
+                except:
+                    as: e
+                    steps:
+                        - debug_info_loop_substitute_pattern_in_string:
+                            call: sys.log
+                            args:
+                              data: 
+                                - ret_msg : '${ "EXCEPTION-ERROR: Mth: get_typed_map_content_4_struct_block failed!!\n" }'
+                                - e       :  ${e}
+                              severity: "ERROR" # Optional
+                        - unhandled_exception_4_loop_build_typed_struct_payload_block: 
+                            raise: ${e}
+
+    - returnResult:
+        return: ${ ins_sql + "\n)           AS " + p_struct_name }
+
+
+
+

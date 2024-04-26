@@ -1,0 +1,1098 @@
+# -- bq_fw_write_steering_log_info_000_001 -----------------------------------------
+# -- bq framework - log central log info for steering purposes
+# -- §META_CURRENT_GCP_PROJECT§.§META_CURRENT_METADATA_GWF_CTRL_DATASET§.t_400_log_gwf_gworkflow
+# -- In terraform you need to escape the $$ or it will cause errors.
+
+main:
+  params: [args]
+  steps:
+    - read_runtime_args:
+        # Check runtime arguments
+        switch:
+
+          - condition: ${  "bqfw_info"          in args
+                       and "init_info"          in args
+                       and "specific_info"      in args
+                       and "bqfw_log_info"      in args }
+            assign:
+              - map_bqfw_info                   : ${args.bqfw_info           }
+              - map_init_info                   : ${args.init_info           }
+              - map_specific_info               : ${args.specific_info       }
+              - map_bqfw_log_info               : ${args.bqfw_log_info       }
+
+            next: sys_map_assignments
+
+          - condition: true
+            return:
+                - ret_stat :  "abortion"
+                - ret_code :  9990
+                - ret_msg  :  "Abortion due WRONG INPUT PARAMS in gwf bq_fw_write_steering_log_info_000_001! (Params: bqfw_log_info, init_info, specific_info, bqfw_log_info )."
+                - ret_json :  "[]"
+
+    # System Variables
+    - sys_map_assignments:
+        assign:
+          - map_sys: { }
+          - map_sys["§GOOGLE_CLOUD_LOCATION§"             ] : ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
+          - map_sys["§GOOGLE_CLOUD_PROJECT_ID§"           ] : ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - map_sys["§GOOGLE_CLOUD_PROJECT_NUMBER§"       ] : ${sys.get_env("GOOGLE_CLOUD_PROJECT_NUMBER")}
+          - map_sys["§GOOGLE_CLOUD_SERVICE_ACCOUNT_NAME§" ] : ${sys.get_env("GOOGLE_CLOUD_SERVICE_ACCOUNT_NAME")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID§"] : ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"          ] : ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_ID")}
+          - map_sys["§GOOGLE_CLOUD_WORKFLOW_REVISION_ID§" ] : ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_REVISION_ID")}
+
+    # Variables injected from terraform
+    - tf_assignments:
+        assign:
+          - map_sys["§GOOGLE_CLOUD_LOCATION_CONTINENT§"   ] : "EU"
+          - current_overall_versioning                      : "000001"
+         #- current_overall_versioning                      : "000001"
+          - current_environment                             : "dev"
+         #- current_environment                             : "dev"
+
+          - metadata_gwf_ctrl_topic_name                    : "metadata_gwf_ctrl"
+         #- metadata_gwf_ctrl_topic_name                    : "metadata_gwf_ctrl"
+          - current_version_metadata_gwf_ctrl_gwf           : "000_001"
+         #- current_version_metadata_gwf_ctrl_gwf           : "000_001"
+
+          - metadata_gwf_ctrl_sql_bucket_name               : "624139722394-bq-metadata_gwf_ctrl-000_001"
+         #- metadata_gwf_ctrl_sql_bucket_name               : "624139722394-bq-metadata_gwf_ctrl-000_001"
+          - current_service_account                         : "projects/mms-csv-playground-001-d/serviceAccounts/csv-playground-001-dev-sa-gwf@mms-csv-playground-001-d.iam.gserviceaccount.com"
+         #- current_service_account                         : "projects/mms-csv-playground-001-d/serviceAccounts/csv-playground-001-dev-sa-gwf@mms-csv-playground-001-d.iam.gserviceaccount.com"
+
+          - bq_metadata_gwf_ctrl_prefix_provide_sql         : "bqfw"
+         #- bq_metadata_gwf_ctrl_prefix_provide_sql         : "bqfw"
+
+          - bq_metadata_log_table_name_log_succeeded        : "provide_succeeded_t300"
+         #- bq_metadata_log_table_name_log_succeeded        : "provide_succeeded_t300"
+          - metadata_gwf_ctrl_sql_files_suffix              : ".sql"
+         #- metadata_gwf_ctrl_sql_files_suffix              : ".sql"
+
+          - ds_metadata_gwf_ctrl_dataset_id                 : ${metadata_gwf_ctrl_topic_name + "_" + text.replace_all( current_version_metadata_gwf_ctrl_gwf, ".", "_") }
+
+    - general_placeholder_assignments:
+        assign:
+          - ret_json                                   :  { }
+          - bq_run_result                                             :  { }
+
+          - map_t400_ini                                              :  ${map_sys                                              }
+          - map_t400_ini["§META_CURRENT_GCP_PROJECT§"               ] :  ${map_sys["§GOOGLE_CLOUD_PROJECT_ID§"]                 }
+          - map_t400_ini["§META_CURRENT_METADATA_GWF_CTRL_DATASET§" ] :  ${ds_metadata_gwf_ctrl_dataset_id                      }
+          - map_t400_ini["§special_log_struct_name§"                ] :  "none"
+
+    - assign_sepcific_placeholders_main:
+        switch:
+          # is map_specific_info["specific_info_for"] : "load_external_data"
+          - condition: ${ map_bqfw_info["gwf_todo_entity_list_type" ] == "load" }
+            assign:
+              - map_t400_ini[ "§special_log_struct_name§"           ] : "external_data_load_specs"
+
+            next: ohter_assignments
+
+          # is map_specific_info["specific_info_for"] : "calc_lfv"
+          - condition: ${    map_bqfw_info["gwf_process_id"         ] >= 420
+                         and map_bqfw_info["gwf_process_id"         ] <  700 }
+            assign:
+              - map_t400_ini[ "§special_log_struct_name§"           ] : "gwf_lfv_specs"
+
+            next: ohter_assignments
+
+    # Other Variables
+    - ohter_assignments:
+        assign:
+          - map_t400_ini                                              :  ${ init_map_def_all( map_t400_ini )                    }
+
+          - map_t400_ini["§gwf_process_id§"                         ] :  ${string(map_bqfw_info.gwf_process_id)                 }
+          - map_t400_ini["§gwf_init_ts_as_ns§"                      ] :  ${map_init_info.gwf_init_ts_as_ns                      }
+          - map_t400_ini["§gwf_init_ts§"                            ] :  ${map_init_info.gwf_init_ts                            }
+          - map_t400_ini["§gwf_init_ts_4_suffix§"                   ] :  ${"'" + map_init_info.gwf_init_ts_4_suffix       + "'" }
+          - map_t400_ini["§gwf_init_ts_as_cet_str§"                 ] :  ${"'" + map_init_info.gwf_init_ts_as_cet_str     + "'" }
+          - map_t400_ini["§ref_date_id§"                            ] :  ${"CAST('" + map_bqfw_info.ref_date_id  + "' AS DATE)" }
+          - map_t400_ini["§eob_date_id§"                            ] :  ${"CAST('" + map_bqfw_info.eob_date_id  + "' AS DATE)" }
+          - map_t400_ini["§gwf_topic§"                              ] :  ${"'" + map_bqfw_info.gwf_topic                  + "'" }
+          - map_t400_ini["§outlet_id_list§"                         ] :  ${"'" + map_bqfw_info.outlet_id_list             + "'" }
+          - map_t400_ini["§gwf_todo_entity_list_type§"              ] :  ${"'" + map_bqfw_info.gwf_todo_entity_list_type  + "'" }
+          - map_t400_ini["§gwf_todo_entity_list_version§"           ] :  ${"'" + map_bqfw_info.gwf_todo_entity_list_version+"'" }
+
+          - map_t400_ini["§gwf_record_creator§"                     ] :  ${"'" + current_service_account                  + "'" }
+
+          - map_ret_sel                                               : ${get_init_record_from_central_steering_table(map_t400_ini)}
+          - ret_json                                    : { }
+          - log_table_name_steering                                   : ${map_ret_sel[0].log_table_name_steering                }
+          - log_table_name_process                                    : ${map_ret_sel[1].log_table_name_process                 }
+          - sql_select_central_steering_log_infos                     : ${map_ret_sel[2].sel_sql                                }
+
+
+    - try_to_exec_bqfw_execute_bq_query_4_definitions:
+        try:
+            call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+            args:
+                workflow_id      : "bq_fw_exec_bq_log_read_000_001"
+                location         : ${map_t400_ini["§GOOGLE_CLOUD_LOCATION§"                 ]}
+                project_id       : ${map_t400_ini["§GOOGLE_CLOUD_PROJECT_ID§"               ]}
+                argument         :
+                  project_id     : ${map_t400_ini["§GOOGLE_CLOUD_PROJECT_ID§"               ]}
+                  dataset_id     : ${map_t400_ini["§META_CURRENT_METADATA_GWF_CTRL_DATASET§"]}
+                  location_id    : "EU"
+                  operation_type : "select"
+                  bq_entity_name : ${log_table_name_steering                                 }
+                  query_string   : ${sql_select_central_steering_log_infos                   }
+            result: bq_run_result
+        except:
+            as: e
+            steps:
+                - assignments_4__execute_bq_query_4_definitions_exception:
+                    assign:
+                      - map_e                             :  ${catch_exception_e(e)}
+                      - ret_json[log_table_name_steering] : ${e}
+                - return_wf_call_exception_error_bqfw_execute_bq_query_1:
+                    return:
+                      - ret_stat :    "abortion"
+                      - ret_code :  ${map_e["code"]       }
+                      - ret_msg  : '${"gwf_call:bqfw_execute_bq_query;" + log_table_name_steering + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                      - ret_json :  ${ret_json }
+
+    - check_on_bqfw_execute_bq_query_4_definitions_error:
+        switch:
+          # check for execution errors
+          - condition: ${  bq_run_result[2].ret_code > 0 or bq_run_result[4].ret_rows == 0 }
+            steps:
+                - assignments_4_bqfw_execute_bq_query_error_1:
+                    assign:
+                      - ret_json[log_table_name_steering] : '${bq_run_result}'
+                - if_error_4_bqfw_execute_bq_query_error_stop_1:
+                    return:
+                        - ret_stat : '${if( (bq_run_result[2].ret_code > 0), "error", "nothing_to_do") }'
+                        - ret_code :  ${bq_run_result[2].ret_code }
+                        - ret_msg  : '${if( (bq_run_result[2].ret_code > 0),
+                                             "Aborted due Error in executing the sql:\n" + sql_select_central_steering_log_infos + "\n\n\n" + json.encode_to_string(bq_run_result[3].ret_msg),
+                                             "Aborted due NO Row affected in executing the sql: " + sql_select_central_steering_log_infos
+                                             ) }'
+                        - ret_json :  ${ret_json }
+    - init_vars_4_steering_record:
+        assign:
+          - map_def_row                 :  ${sub_4_1_row_assign_select_values_to_field_names( bq_run_result[0].ret_json.schema.fields, bq_run_result[0].ret_json.rows[0].f, map_t400_ini ) }
+                                                                                            # p_col_descriptions                     , p_col_values                       , p_map_def_all
+
+          - ret_json["steering_record"] : '${[bq_run_result[5].ret_job.statistics.query.referencedTables[0].tableId, bq_run_result[0].ret_json.schema.fields, bq_run_result[0].ret_json.rows[0].f, map_def_row] }'
+
+          - map_ret                     :  ${sub_log_steering_log_infos(map_def_row, ret_json, map_bqfw_log_info )}
+          - ret_json                    :  ${map_ret[3].ret_json }
+
+    - leave_if_abortion_001:
+        switch:
+          - condition:   ${ map_ret[0].ret_stat == "abortion" }
+            steps:
+                - leave_sub_001:
+                    return:
+                        - ret_stat :  ${map_ret[0].ret_stat }   # "abortion"
+                        - ret_code :  ${map_ret[1].ret_code }
+                        - ret_msg  : '${map_ret[2].ret_msg  }'
+                        - ret_json :  ${ret_json            }
+
+    #--- log t300
+    - check_4_succeeded_process_logging:
+        switch:
+          - condition: ${   map_bqfw_log_info["§process_400_phase_id§"] == 0
+                        and map_bqfw_log_info["§gwf_400_status_id§"   ] == 0
+                        and map_bqfw_log_info["§outlet_id_list§"      ] == "all"
+                        and map_bqfw_log_info["§gwf_400_finished§"    ]
+                        and map_bqfw_log_info["§gwf_400_succeded§"    ] }
+            steps:
+                - read_sql_file_content_and_create_placeholder_mapping:
+                    assign:
+                      - file_name        : ${ metadata_gwf_ctrl_topic_name + "_" + current_version_metadata_gwf_ctrl_gwf + "__" + bq_metadata_gwf_ctrl_prefix_provide_sql + "_" + bq_metadata_log_table_name_log_succeeded + metadata_gwf_ctrl_sql_files_suffix}
+                      - sql_file_content : ${ sub_get_cloud_storage_bucket_file_content_as_string(metadata_gwf_ctrl_sql_bucket_name, file_name) }
+                      - bq_content_with_substituted_placeholder : ${ sub_substitute_pattern_in_string(sql_file_content, map_t400_ini) }
+
+                - try_to_exec_bqfw_execute_bq_query:
+                    try:
+                        call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+                        args:
+                            workflow_id      : "bq_fw_exec_bq_logging_000_001"
+                            location         : ${map_sys["§GOOGLE_CLOUD_LOCATION§"          ]}
+                            project_id       : ${map_sys["§GOOGLE_CLOUD_PROJECT_ID§"        ]}
+                            argument         :
+                              project_id     : ${map_sys["§GOOGLE_CLOUD_PROJECT_ID§"        ]}
+                              dataset_id     : ${ds_metadata_gwf_ctrl_dataset_id             }
+                              location_id    : "EU"
+                              operation_type : "select"
+                              bq_entity_name : ${bq_metadata_log_table_name_log_succeeded   }
+                              query_string   : ${bq_content_with_substituted_placeholder}
+                        result: bq_run_result
+                    except:
+                        as: e
+                        steps:
+                            - assignments_4_bqfw_execute_bq_query_exception:
+                                assign:
+                                  - ret_json[bq_metadata_log_table_name_log_succeeded] :  ${e}
+                                  - map_e                                               :  ${catch_exception_e(e)}
+                            - return_wf_call_exception_error_bqfw_execute_bq_query_loop:
+                                return:
+                                  - ret_stat :    "abortion"
+                                  - ret_code :  ${map_e["code"]       }
+                                  - ret_msg  : '${"gwf_call:bqfw_execute_bq_query;" + bq_metadata_log_table_name_log_succeeded + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                                  - ret_json :  ${ret_json }
+
+                - check_on_bqfw_execute_bq_query_error:
+                    switch:
+                      # check for execution errors
+                      - condition: ${  bq_run_result[2].ret_code > 0 or bq_run_result[4].ret_rows == 0 }
+                        steps:
+                            - assignments_4_bqfw_execute_bq_query_error_loop:
+                                assign:
+                                  - ret_json[bq_metadata_log_table_name_log_succeeded] : '${bq_run_result}'
+                            - if_error_4_bqfw_execute_bq_query_error_stop_loop:
+                                return:
+                                    - ret_stat : '${if( (bq_run_result[2].ret_code > 0), "error", "nothing_to_do") }'
+                                    - ret_code :  ${ bq_run_result[2].ret_code }
+                                    - ret_msg  : '${if( (bq_run_result[2].ret_code > 0),
+                                                         "Aborted due Error in executing the sql:\n" + bq_content_with_substituted_placeholder + "\n\n\n" + json.encode_to_string(bq_run_result[3].ret_msg),
+                                                         "Aborted due NO Row affected in executing the sql: " + bq_content_with_substituted_placeholder
+                                                         ) }'
+                                    - ret_json :  ${ ret_json       }
+
+
+    - returnOutput:
+        #return: ${ map_t400_ini }
+        return:
+            - ret_stat :  "succeeded"
+            - ret_code :  0
+            - ret_msg  : '${ map_sys["§GOOGLE_CLOUD_WORKFLOW_ID§"] + " successfully completed."}'
+            - ret_json :  ${ ret_json  }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  catch_exception_e
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+catch_exception_e:
+    params: [ e ]
+    steps:
+    - init_list_map_values:
+        assign:
+          - map_e                  : {}
+          - map_e["code"         ] : 999    # unknown error code
+          - map_e["message"      ] : ""
+          - map_e["error_message"] : ""
+          - map_e["tags"         ] : []
+
+    - check_if_code_in_exception_e:
+        switch:
+          - condition:   ${ "code" in e }
+            assign:
+              - map_e["code"]    : ${e.code}
+
+    - check_if_tags_in_exception_e:
+        switch:
+          - condition:   ${ "tags" in e }
+            assign:
+              - map_e["tags"]    : ${e.tags}
+
+    - check_if_message_in_exception_e:
+        switch:
+          - condition:   ${ "message" in e }
+            assign:
+              - map_e["message"] : ${map_e["message"] + e.message}
+
+    - check_if_body_in_exception_e:
+        switch:
+          - condition:   ${ "body" in e }
+            switch:
+              - condition:   ${ "error" in e.body }
+                switch:
+                  - condition:   ${ "message" in e.body.error }
+                    assign:
+                      - map_e["message"] : ${map_e["message"] + e.body.error.message}
+
+    - check_if_operation_in_exception_e:
+        switch:
+          - condition:   ${ "operation" in e }
+            switch:
+              - condition:   ${ "error" in e.operation }
+                switch:
+                  - condition:   ${ "context" in e.operation.error and "payload" in e.operation.error }
+                    assign:
+                      - map_e["error_message"] : ${map_e["error_message"] + e.operation.error.payload + "\n    \n" + e.operation.error.context }
+
+    - check_if_message_empty:
+        switch:
+          - condition:   ${ map_e["message"] == "" }
+            assign:
+              - map_e["message"]       : "Unknown exception message structure. See exception."
+
+    - check_if_error_message_empty:
+        switch:
+          - condition:   ${ map_e["error_message"] == "" }
+            assign:
+              - map_e["error_messageerror_message"]       : "Unknown exception message structure. See exception."
+
+
+    - returnResult:
+        return: ${map_e}
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_get_cloud_storage_bucket_file_content_as_string
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_get_cloud_storage_bucket_file_content_as_string:
+    params: [bucket_name, file_name]
+
+    steps:
+    - init_sub_substitute_pattern_in_string:
+        assign:
+           - bucket_name : ${ text.replace_all(bucket_name, "gs://", "" )  }
+
+    - read_cloud_storage_bucket_file_content_into_string:
+        try:
+            call: googleapis.storage.v1.objects.get
+            args:
+              bucket: ${bucket_name}
+              object: ${file_name}
+              alt: "media"
+            result: file_content
+        except:
+            as: e
+            steps:
+                - excpetion_read_cloud_storage_bucket_file_content_into_string:
+                    call: sys.log
+                    args:
+                      data: '${ "EXCEPTION-ERROR: FILE READ NOT POSSIBLE!! bucket_name: " + bucket_name + " file_name: " + file_name + " error: " +  json.encode_to_string( e )  }'
+                      severity: "ERROR" # Optional
+
+    - returnResult:
+        return: ${file_content}
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_substitute_pattern_in_string
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_substitute_pattern_in_string:
+    params: [string_2be_substituted, map_pattern_value]
+    steps:
+    - init_sub_substitute_pattern_in_string:
+        assign:
+           - string_2be_substituted : ${ default(string_2be_substituted, "") }
+           - lst_map_pattern        : ${ text.find_all_regex(string_2be_substituted, "[§°][^§°]+[§°]") }
+
+    - loop_substitute_pattern_in_string:
+        for:
+          value: map_pattern
+         #in: ${keys(map_pattern_value)}
+          in: ${ lst_map_pattern }
+          steps:
+            - subst_all_patterns:
+                try:
+                    assign:
+                    - string_2be_substituted: ${text.replace_all( string_2be_substituted, map_pattern.match, map_pattern_value[map_pattern.match] )}
+                except:
+                    as: e
+                    steps:
+                        - debug_info_loop_substitute_pattern_in_string:
+                            call: sys.log
+                            args:
+                              data: '${ "EXCEPTION-ERROR: Empty value for pattern: " + map_pattern.match + " string_2be_substituted: " + string_2be_substituted + " error: " +  json.encode_to_string( e )  }'
+                              severity: "ERROR" # Optional
+
+    - returnResult:
+        return: ${string_2be_substituted}
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_4_1_row_assign_select_values_to_field_names
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_4_1_row_assign_select_values_to_field_names:
+    params: [p_col_descriptions, p_col_values, p_map_def_all]
+
+    steps:
+    - init_sub_4_1_row_assign_select_values_to_field_names_vars:
+        assign:
+          - idx             : 0
+
+    - loop_list_of_colums:
+        for:
+          value: column_description
+          in: ${p_col_descriptions}
+          steps:
+            - init_vars_for_loop_list_of_colums:
+                assign:
+                  - s_idx               : '${"§" + column_description.name + "§"}'
+                  - p_map_def_all[s_idx]:  ${ p_col_values[idx].v }
+
+            - end_loop_list_of_colums_steps :
+                assign:
+                  - idx                     :  ${ idx + 1 }
+
+    - returnResult:
+        return: ${ p_map_def_all    }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  sub_log_steering_log_infos
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+sub_log_steering_log_infos:
+    params: [ par_map, p_ret_json, map_bqfw_log_info ]
+    steps:
+    - init_sub_get_all_steps_to_be_executed:
+        assign:
+          - par_map["§gwf_last_step§"                   ] :  ${ map_bqfw_log_info["§gwf_last_step§"                           ] }
+          - par_map["§gwf_last_return_code§"            ] :  ${ map_bqfw_log_info["§gwf_last_return_code§"                    ] }
+          - par_map["§gwf_number_steps_all§"            ] :  ${ map_bqfw_log_info["§gwf_number_steps_all§"                    ] }
+          - par_map["§gwf_number_steps_succeeded§"      ] :  ${ map_bqfw_log_info["§gwf_number_steps_succeeded§"              ] }
+          - par_map["§gwf_number_steps_failed§"         ] :  ${ map_bqfw_log_info["§gwf_number_steps_failed§"                 ] }
+          - par_map["§gwf_number_steps_remaining§"      ] :  ${ map_bqfw_log_info["§gwf_number_steps_remaining§"              ] }
+          - par_map["§gwf_total_rows_affected§"         ] :  ${ map_bqfw_log_info["§gwf_total_rows_affected§"                 ] }
+          - par_map["§gwf_total_bytes_for_new_tables§"  ] :  ${ map_bqfw_log_info["§gwf_total_bytes_for_new_tables§"          ] }
+          - par_map["§gwf_total_bytes_processed§"       ] :  ${ map_bqfw_log_info["§gwf_total_bytes_processed§"               ] }
+          - par_map["§gwf_total_bytes_billed§"          ] :  ${ map_bqfw_log_info["§gwf_total_bytes_billed§"                  ] }
+          - par_map["§gwf_total_modified_partitions§"   ] :  ${ map_bqfw_log_info["§gwf_total_modified_partitions§"           ] }
+          - par_map["§gwf_total_slot_ms§"               ] :  ${ map_bqfw_log_info["§gwf_total_slot_ms§"                       ] }
+
+          - par_map["§process_phase_id§"                ] :  ${ map_bqfw_log_info["§process_phase_id§"                        ] }
+          - par_map["§process_phase_name§"              ] :  ${ map_bqfw_log_info["§process_phase_name§"                      ] }
+          - par_map["§gwf_re_run§"                      ] :  ${ map_bqfw_log_info["§gwf_re_run§"                              ] }
+          - par_map["§gwf_finished§"                    ] :  ${ map_bqfw_log_info["§gwf_finished§"                            ] }
+          - par_map["§gwf_succeded§"                    ] :  ${ map_bqfw_log_info["§gwf_succeded§"                            ] }
+
+
+          - par_map["§gwf_error_message§"               ] :  ${ map_bqfw_log_info["§gwf_error_message§"                       ] }
+
+          - par_map["§gwf_error_message§"               ] :  ${text.replace_all( par_map["§gwf_error_message§"], "\r", "\\r"  ) }
+          - par_map["§gwf_error_message§"               ] :  ${text.replace_all( par_map["§gwf_error_message§"], "\n", "\\n"  ) }
+          - par_map["§gwf_error_message§"               ] :  ${text.replace_all( par_map["§gwf_error_message§"], "'" , "\\'"  ) }
+          - par_map["§gwf_error_message§"               ] :  ${text.replace_all_regex ( par_map["§gwf_error_message§"], "\\[\\]+", "\\"  ) }
+          - par_map["§gwf_error_message§"               ] :  ${text.replace_all( par_map["§gwf_error_message§"], "\\\\" , "\\"  ) }
+
+          - par_map["§gwf_status_id§"                   ] :  ${ map_bqfw_log_info["§gwf_status_id§"                           ] }
+          - par_map["§gwf_status_name§"                 ] :  ${ map_bqfw_log_info["§gwf_status_name§"                         ] }
+
+          - gwf_start_processing_as_float                 :  ${map_bqfw_log_info["§gwf_record_create_ts§"                     ] }
+          - gwf_end_processing_as_float                   :  ${sys.now()                                                        }
+
+          - par_map["§gwf_record_create_ts§"            ] : '${time.format(gwf_start_processing_as_float, "CET"               ) }'
+          - par_map["§gwf_step_start_ts§"               ] : '${time.format(gwf_start_processing_as_float, "CET"               ) }'
+          - par_map["§gwf_step_end_ts§"                 ] : '${time.format(gwf_end_processing_as_float  , "CET"               ) }'
+          - par_map["§gwf_step_duration_microsecs§"     ] :  ${int( gwf_end_processing_as_float * 1000000 ) - int( gwf_start_processing_as_float * 1000000 ) }
+
+          - sql_insert_central_steering_logging           :  ${get_logging_insert_head(par_map)                }
+          - str_insert_payload                            :  ${get_logging_insert_payload(par_map)             }
+          - sql_insert_central_steering_logging           : '${sql_insert_central_steering_logging + "\n" +  default(str_insert_payload, "") }'
+
+    - try_to_exec_sql_insert_central_steering_logging:
+        try:
+            call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.run
+            args:
+                workflow_id      : "bq_fw_exec_bq_logging_000_001"
+                location         : ${par_map["§GOOGLE_CLOUD_LOCATION§"                  ]}
+                project_id       : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"                ]}
+                argument         :
+                  project_id     : ${par_map["§GOOGLE_CLOUD_PROJECT_ID§"                ]}
+                  dataset_id     : ${par_map["§META_CURRENT_METADATA_GWF_CTRL_DATASET§" ]}
+                  location_id    : "EU"
+                  operation_type : "insert"
+                  bq_entity_name : ${par_map["§gwf_topic§"                              ]}
+                  query_string   : ${sql_insert_central_steering_logging                 }
+            result: bq_run_result
+        except:
+            as: e
+            steps:
+                - assignments_4_exec_sql_insert_central_steering_logging:
+                    assign:
+                      - map_e                                              : ${catch_exception_e(e)}
+                      - p_ret_json[par_map["§gwf_topic§"]]                 : {}
+                      - p_ret_json[par_map["§gwf_topic§"]]["query_string"] : ${sql_insert_central_steering_logging}
+                      - p_ret_json[par_map["§gwf_topic§"]]["exception"   ] : ${e}
+                - return_wf_call_exception_error_bqfw_execute_bq_query_001:
+                    return:
+                      - ret_stat :   "abortion"
+                      - ret_code :  ${map_e["code"]       }
+                      - ret_msg  : '${"gwf_call:bqfw_execute_bq_query;" + par_map["§gwf_topic§"] + "\n" + map_e["message"] + "\n" + map_e["error_message"] }'
+                      - ret_json :  ${p_ret_json }
+
+    - check_on_bqfw_execute_bq_query_4_executions_error:
+        switch:
+          # check for execution errors
+          - condition: ${  bq_run_result[2].ret_code > 0 or  bq_run_result[4].ret_rows == 0 }
+            steps:
+                - assignments_4_check_on_bqfw_execute_bq_query_4_executions_error:
+                    assign:
+                      - p_ret_json[par_map["§gwf_topic§"]]                  :  {}
+                      - p_ret_json[par_map["§gwf_topic§"]]["query_string" ] :  ${sql_insert_central_steering_logging}
+                      - p_ret_json[par_map["§gwf_topic§"]]["error_message"] : '${if( (bq_run_result[2].ret_code > 0),
+                                                                                          "Aborted due Error in executing the sql:\n" + sql_insert_central_steering_logging + "\n\n\n" + json.encode_to_string(bq_run_result[3].ret_msg), 
+                                                                                          "Aborted due NO Row affected in executing the sql : " + sql_insert_central_steering_logging
+                                                                                          ) }'
+                - if_error_4_bqfw_execute_bq_query_error_stop_1:
+                    return:
+                        - ret_stat : '${if( (bq_run_result[2].ret_code > 0), "error", "no_rows_inserted") }'
+                        - ret_code :  ${ bq_run_result[2].ret_code }
+                        - ret_msg  : '${if( (bq_run_result[2].ret_code > 0),
+                                                          "Aborted due Error in executing the sql:\n" + sql_insert_central_steering_logging + "\n\n\n" + bq_run_result[3].ret_msg,
+                                                          "Aborted due NO Row affected in executing the sql : " + sql_insert_central_steering_logging
+                                                          ) }'
+                        - ret_json : '${ p_ret_json }'
+
+    - returnResult:
+        return:
+          - ret_stat : "succeeded"
+          - ret_code : 0
+          - ret_msg  : "sub_log_steering_log_infos successfully ended."
+          - ret_json : ${ p_ret_json }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_central_steering_log_tab_infos
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_central_steering_log_tab_infos:
+    params: [ p_special_log_struct_name ]
+    steps:
+    - init_definition_log_tab_assignments_001:
+        assign:
+           - log_table_name_steering            :   "t_400_log_gwf_gworkflow"
+           - log_table_name_process             :   "t_300_log_gwf_process"
+           - lst_log_table_main_columns         : [ "gwf_log_wf_id"
+                                                  , "gwf_log_process_id"
+                                                  , "gwf_log_task_id"
+                                                  , "gwf_log_objective_id"
+                                                  , "gwf_todo_entity_list_version"
+                                                  , "gwf_process_id"
+                                                  , "gwf_process_name"
+                                                  , "gwf_process_topic_list"
+                                                  , "gwf_process_version"
+                                                  , "gwf_task_id"
+                                                  , "gwf_task_name"
+                                                  , "gwf_objective_id"
+                                                  , "gwf_objective_name"
+                                                  , "task_period_type"
+                                                  , "task_period_value"
+                                                  , "gwf_topic"
+                                                  , "outlet_id_list"
+                                                  , "outlet_id_list_as_sql_condition"
+                                                  , "ref_date_id"
+                                                  , "eob_date_id"
+                                                  , "gwf_todo_entity_list_specs"
+                                                  , "${ p_special_log_struct_name }"
+                                                  , "gwf_exec_specs"
+                                                  , "process_phase_id"
+                                                  , "process_phase_name"
+                                                  , "process_renew_or_continue"
+                                                  , "gwf_renew_or_continue"
+                                                  , "gwf_re_run"
+                                                  , "gwf_finished"
+                                                  , "gwf_succeded"
+                                                  , "gwf_start_ts"
+                                                  , "gwf_end_ts"
+                                                  , "gwf_duration_microsecs"
+                                                  , "gwf_record_creator"
+                                                  , "gwf_record_create_ts"
+                                                  , "gwf_init_ts"
+                                                  , "gwf_init_ts_as_cet_str"
+                                                  , "gwf_init_ts_as_ns"
+                                                  , "gwf_init_ts_4_suffix"
+                                                  , "gwf_error_message"
+                                                  , "gwf_status_id"
+                                                  , "gwf_status_name"
+                                                  ]
+
+
+           - lst_todo_entity_list_specs_columns  : [ "gwf_todo_entity_list_id"
+                                                  , "gwf_todo_entity_list_name"
+                                                  , "gwf_todo_entity_list_type"
+                                                  , "gwf_todo_entity_list_version"
+                                                  ]
+
+           - lst_gwf_exec_specs                 : [ "gwf_last_step"                 
+                                                  , "gwf_last_return_code"          
+                                                  , "gwf_number_steps_all"          
+                                                  , "gwf_number_steps_succeeded"    
+                                                  , "gwf_number_steps_failed"       
+                                                  , "gwf_number_steps_remaining"    
+                                                  , "gwf_total_rows_affected"       
+                                                  , "gwf_total_bytes_for_new_tables"
+                                                  , "gwf_total_bytes_processed"     
+                                                  , "gwf_total_bytes_billed"        
+                                                  , "gwf_total_modified_partitions" 
+                                                  , "gwf_total_slot_ms"             
+                                                  ]
+
+           - lst_external_data_load_specs_columns : [ "gwf_load_external_datasource_id"
+                                                  , "gwf_load_external_prepare_id"
+                                                  , "gwf_load_external_prepare_ts"
+                                                  , "gwf_load_external_prepare_date"
+                                                  , "gwf_file_to_load_bucket_name"
+                                                  , "gwf_file_to_load_file_name"
+                                                  ]
+
+           - lst_gwf_lfv_specs_columns          : [ "new_cost_records"
+                                                  , "new_depr_periods"
+                                                  , "mm_abs_calc"
+                                                  , "date_id_twa_calc_from"
+                                                  , "date_id_twa_calc_to"
+                                                  , "variants"
+                                                  ]
+
+           - map_log_table_main_cols_data_types : {}
+           - map_log_table_main_cols_data_types   [ "gwf_log_wf_id"                             ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_log_process_id"                        ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_log_task_id"                           ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_log_objective_id"                      ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_todo_entity_list_version"              ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_process_id"                            ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_process_name"                          ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_process_topic_list"                    ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_process_version"                       ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_task_id"                               ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_task_name"                             ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_objective_id"                          ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_objective_name"                        ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "task_period_type"                          ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "task_period_value"                         ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_topic"                                 ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "outlet_id_list"                            ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "outlet_id_list_as_sql_condition"           ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "ref_date_id"                               ] : "DATE"
+           - map_log_table_main_cols_data_types   [ "eob_date_id"                               ] : "DATE"
+           - map_log_table_main_cols_data_types   [ "gwf_todo_entity_list_specs"                ] : "STRUCT"
+           - map_log_table_main_cols_data_types   [ "${ p_special_log_struct_name }"            ] : "STRUCT"
+           - map_log_table_main_cols_data_types   [ "gwf_exec_specs"                            ] : "STRUCT"
+           - map_log_table_main_cols_data_types   [ "process_phase_id"                          ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "process_phase_name"                        ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "process_renew_or_continue"                 ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_renew_or_continue"                     ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_re_run"                                ] : "BOOL"
+           - map_log_table_main_cols_data_types   [ "gwf_finished"                              ] : "BOOL"
+           - map_log_table_main_cols_data_types   [ "gwf_succeded"                              ] : "BOOL"
+           - map_log_table_main_cols_data_types   [ "gwf_start_ts"                              ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_end_ts"                                ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_duration_microsecs"                    ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_record_creator"                        ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_record_create_ts"                      ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts"                               ] : "TIMESTAMP"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts_as_cet_str"                    ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts_as_ns"                         ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_init_ts_4_suffix"                      ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_error_message"                         ] : "STRING"
+           - map_log_table_main_cols_data_types   [ "gwf_status_id"                             ] : "INT64"
+           - map_log_table_main_cols_data_types   [ "gwf_status_name"                           ] : "STRING"
+
+          #- map_log_table_main_cols_data_types   [ "program_id"                                ] : "INT64"
+          #- map_log_table_main_cols_data_types   [ "gwf_step_id"                               ] : "INT64"
+          #- map_log_table_main_cols_data_types   [ "bq_renew_or_continue_entity"               ] : "STRING"
+          #                                       , "program_id"
+          #                                       , "gwf_step_id"
+          #                                       , "bq_renew_or_continue_entity"
+
+
+
+    - init_definition_log_tab_assignments_002:
+        assign:
+           - map_gwf_todo_entity_list_specs_types: {}
+           - map_gwf_todo_entity_list_specs_types[ "gwf_todo_entity_list_id"                    ] : "INT64"
+           - map_gwf_todo_entity_list_specs_types[ "gwf_todo_entity_list_name"                  ] : "STRING"
+           - map_gwf_todo_entity_list_specs_types[ "gwf_todo_entity_list_type"                  ] : "STRING"
+           - map_gwf_todo_entity_list_specs_types[ "gwf_todo_entity_list_version"               ] : "STRING"
+
+           - map_gwf_exec_specs_cols_data_types: {}
+           - map_gwf_exec_specs_cols_data_types[ "gwf_last_step"                                ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_last_return_code"                         ] : "STRING"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_number_steps_all"                         ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_number_steps_succeeded"                   ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_number_steps_failed"                      ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_number_steps_remaining"                   ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_total_rows_affected"                      ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_total_bytes_for_new_tables"               ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_total_bytes_processed"                    ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_total_bytes_billed"                       ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_total_modified_partitions"                ] : "INT64"
+           - map_gwf_exec_specs_cols_data_types[ "gwf_total_slot_ms"                            ] : "INT64"
+
+    - init_definition_log_tab_assignments_003:
+        assign:
+           - map_external_data_load_specs_data_types : {}
+           - map_external_data_load_specs_data_types[ "gwf_load_external_datasource_id"         ] : "INT64"
+           - map_external_data_load_specs_data_types[ "gwf_load_external_prepare_id"            ] : "INT64"
+           - map_external_data_load_specs_data_types[ "gwf_load_external_prepare_ts"            ] : "TIMESTAMP"
+           - map_external_data_load_specs_data_types[ "gwf_load_external_prepare_date"          ] : "DATE"
+           - map_external_data_load_specs_data_types[ "gwf_file_to_load_bucket_name"            ] : "STRING"
+           - map_external_data_load_specs_data_types[ "gwf_file_to_load_file_name"              ] : "STRING"
+
+           - map_gwf_lfv_specs_data_types : {}
+           - map_gwf_lfv_specs_data_types[ "new_cost_records"                                   ] : "INT64"
+           - map_gwf_lfv_specs_data_types[ "new_depr_periods"                                   ] : "INT64"
+           - map_gwf_lfv_specs_data_types[ "mm_abs_calc"                                        ] : "INT64"
+           - map_gwf_lfv_specs_data_types[ "date_id_twa_calc_from"                              ] : "DATE"
+           - map_gwf_lfv_specs_data_types[ "date_id_twa_calc_to"                                ] : "DATE"
+           - map_gwf_lfv_specs_data_types[ "variants"                                           ] : "INT64"
+
+    - returnResult:
+        return:
+          - log_table_name_steering                 : ${ log_table_name_steering                }
+          - log_table_name_process                  : ${ log_table_name_process                 }
+
+          - lst_log_table_main_columns              : ${ lst_log_table_main_columns             }
+          - lst_todo_entity_list_specs_columns      : ${ lst_todo_entity_list_specs_columns     }
+          - lst_log_table_special_columns           : ${ if( (p_special_log_struct_name == "external_data_load_specs"), lst_external_data_load_specs_columns   , if( (p_special_log_struct_name == "gwf_lfv_specs"), lst_gwf_lfv_specs_columns   , []) ) }
+
+          - map_log_table_main_cols_data_types      : ${ map_log_table_main_cols_data_types     }
+          - map_gwf_todo_entity_list_specs_types    : ${ map_gwf_todo_entity_list_specs_types   }
+          - map_log_table_spec_cols_data_types      : ${ if( (p_special_log_struct_name == "external_data_load_specs"), map_external_data_load_specs_data_types, if( (p_special_log_struct_name == "gwf_lfv_specs"), map_gwf_lfv_specs_data_types, []) ) }
+
+          - lst_gwf_exec_specs                      : ${ lst_gwf_exec_specs                     }
+
+          - map_gwf_exec_specs_cols_data_types      : ${ map_gwf_exec_specs_cols_data_types     }
+
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_init_record_from_central_steering_table
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_init_record_from_central_steering_table:
+    params: [ par_map ]
+    steps:
+    - assign_central_steering_log_tab_infos:
+        assign:
+          - central_steering_log_tab_infos          : ${ get_central_steering_log_tab_infos( par_map["§special_log_struct_name§"] )   }
+          - log_table_name_steering                 : ${ central_steering_log_tab_infos[0].log_table_name_steering               }
+          - log_table_name_process                  : ${ central_steering_log_tab_infos[1].log_table_name_process                }
+          - lst_log_table_main_columns              : ${ central_steering_log_tab_infos[2].lst_log_table_main_columns            }
+          - lst_todo_entity_list_specs_columns      : ${ central_steering_log_tab_infos[3].lst_todo_entity_list_specs_columns    }
+          - lst_log_table_special_columns           : ${ central_steering_log_tab_infos[4].lst_log_table_special_columns         }
+          - map_log_table_main_cols_data_types      : ${ central_steering_log_tab_infos[5].map_log_table_main_cols_data_types    }
+          - map_gwf_todo_entity_list_specs_types    : ${ central_steering_log_tab_infos[6].map_gwf_todo_entity_list_specs_types  }
+          - map_log_table_spec_cols_data_types      : ${ central_steering_log_tab_infos[7].map_log_table_spec_cols_data_types    }
+          - lst_gwf_exec_specs                      : ${ central_steering_log_tab_infos[8].lst_gwf_exec_specs                    }
+          - map_gwf_exec_specs_cols_data_types      : ${ central_steering_log_tab_infos[9].map_gwf_exec_specs_cols_data_types    }
+          - comma_placeholder                       : " "
+
+          - sel_sql                                 : "\nSELECT"
+          - sel_body                                : ${           "\nFROM `" + par_map["§META_CURRENT_GCP_PROJECT§"]  + "." + par_map["§META_CURRENT_METADATA_GWF_CTRL_DATASET§"]  + "." + log_table_name_steering + "` t_src"}
+          - sel_body                                : ${sel_body + "\nWHERE gwf_process_id    = " + par_map["§gwf_process_id§"   ] + "\n  AND process_phase_id = -1000 "                         }
+          - sel_body                                : ${sel_body + "\n  AND gwf_init_ts_as_ns = " + par_map["§gwf_init_ts_as_ns§"] + "\n  AND gwf_topic      = " + par_map["§gwf_topic§"      ]        }
+          - sel_body                                : ${sel_body + "\n  AND ref_date_id       = " + par_map["§ref_date_id§"      ] + "\n  AND outlet_id_list = " + par_map["§outlet_id_list§" ]        }
+          - sel_body                                : ${sel_body + "\n  AND gwf_todo_entity_list_specs.gwf_todo_entity_list_type    = " + par_map["§gwf_todo_entity_list_type§"   ] }
+          - sel_body                                : ${sel_body + "\n  AND gwf_todo_entity_list_specs.gwf_todo_entity_list_version = " + par_map["§gwf_todo_entity_list_version§"] + "\n;"}
+
+    - loop_build_definition_logging_insert_payload:
+        for:
+          value: column_name
+          in: ${ lst_log_table_main_columns }
+          steps:
+            - subst_all_patterns:
+                try:
+                    switch:
+                      - condition: ${ column_name != "gwf_todo_entity_list_specs"  and column_name != par_map["§special_log_struct_name§"] }
+                        assign:
+                          - sel_sql           : ${ sel_sql + get_typed_column_2_select( comma_placeholder, "", column_name, map_log_table_main_cols_data_types[column_name] )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: ${ column_name == "gwf_todo_entity_list_specs" }
+                        assign:
+                          - sel_sql           : ${ sel_sql + get_typed_select_struct_block( comma_placeholder, column_name, lst_todo_entity_list_specs_columns, map_gwf_todo_entity_list_specs_types )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: ${ column_name == par_map["§special_log_struct_name§"] and par_map["§special_log_struct_name§"] != "none"  }
+                        assign:
+                          - sel_sql           : ${ sel_sql + get_typed_select_struct_block( comma_placeholder, column_name, lst_log_table_special_columns    , map_log_table_spec_cols_data_types    )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: true
+                        assign:
+                          - sel_sql           : ${ sel_sql + get_typed_column_2_select( comma_placeholder, "", column_name, map_log_table_main_cols_data_types[column_name] )  }
+                        next: set_comma_placeholder_to_comma
+
+                except:
+                    as: e
+                    steps:
+                        - error_info_loop_substitute_pattern_in_string:
+                            call: sys.log
+                            args:
+                              data: '${ "EXCEPTION-ERROR:Mth-get_init_record_from_central_steering_table: Empty value for column_name: " + column_name + " string_2be_substituted: " + " error: " +  json.encode_to_string( e )  }'
+                              severity: "ERROR" # Optional
+
+            - set_comma_placeholder_to_comma:
+                assign:
+                  - comma_placeholder : ", "
+
+    - returnResult:
+        return:
+          - log_table_name_steering                 : ${ log_table_name_steering    }
+          - log_table_name_process                  : ${ log_table_name_process     }
+          - sel_sql                                 : ${ sel_sql + sel_body + "\n"  }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_typed_column_2_select
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_typed_column_2_select:
+    params: [ p_comma_placeholder, p_struct_name, p_column_name, p_column_type ]
+    steps:
+    - assign_helper_vars_get_typed_payload_row:
+        assign:
+          - p_struct_name   : ${ if( ( p_struct_name != ""), (p_struct_name + "."), "" ) }
+          - sel_col         : ${ p_comma_placeholder }
+          - sel_col         : ${ sel_col + if( (p_column_type == "TIMESTAMP" ),      ("CAST(" + p_struct_name + p_column_name + " AS STRING FORMAT 'YYYY-MM-DD HH:MM:SS' ) AS " + p_column_name + " \n") , "" )  }
+          - sel_col         : ${ sel_col + if( (p_column_type == "DATE"      ),      ("CAST(" + p_struct_name + p_column_name + " AS STRING FORMAT 'YYYY-MM-DD'          ) AS " + p_column_name + " \n") , "" )  }
+          - sel_col         : ${ sel_col + if( (not (p_column_type in ["TIMESTAMP", "DATE"])), (p_struct_name + p_column_name +                                          " AS " + p_column_name + " \n") , "" )  }
+
+    - returnResult:
+        return: ${ sel_col }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_typed_select_struct_block
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_typed_select_struct_block:
+    params: [  p_comma_placeholder, p_struct_name, p_lst_column_names, p_map_column_types ]
+    steps:
+    - assign_central_steering_log_tab_infos:
+        assign:
+          - l_comma_placeholder         : ${ p_comma_placeholder }
+          - sel_struct                  : ""
+
+    - loop_build_typed_struct_payload_block:
+        for:
+          value: column_name
+          in: ${ p_lst_column_names }
+          steps:
+            - subst_all_patterns:
+                try:
+                    assign:
+                    - sel_struct          : ${ sel_struct + get_typed_column_2_select( l_comma_placeholder, p_struct_name, column_name, p_map_column_types[column_name] ) }
+                    - l_comma_placeholder : ", "
+
+                except:
+                    as: e
+                    steps:
+                        - debug_info_loop_substitute_pattern_in_string:
+                            call: sys.log
+                            args:
+                              data: '${ "EXCEPTION-ERROR: Mth: get_typed_column_2_select failed!! " + " error: " +  json.encode_to_string( e )  }'
+                              severity: "ERROR" # Optional
+
+    - returnResult:
+        return: ${ sel_struct }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  init_map_def_all
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+init_map_def_all:
+    params: [ par_map ]
+    steps:
+    - assign_init_map_def_all:
+        assign:
+          - central_steering_log_tab_infos          : ${ get_central_steering_log_tab_infos( par_map["§special_log_struct_name§"] )   }
+          - par_map[ "§log_table_name_steering§" ]  : ${ central_steering_log_tab_infos[0].log_table_name_steering                    }
+          - par_map[ "§log_table_name_process§"  ]  : ${ central_steering_log_tab_infos[1].log_table_name_process                     }
+          - lst_log_table_main_columns              : ${ central_steering_log_tab_infos[2].lst_log_table_main_columns                 }
+          - lst_todo_entity_list_specs_columns      : ${ central_steering_log_tab_infos[3].lst_todo_entity_list_specs_columns         }
+          - lst_log_table_special_columns           : ${ central_steering_log_tab_infos[4].lst_log_table_special_columns              }
+          - map_log_table_main_cols_data_types      : ${ central_steering_log_tab_infos[5].map_log_table_main_cols_data_types         }
+          - map_gwf_todo_entity_list_specs_types    : ${ central_steering_log_tab_infos[6].map_gwf_todo_entity_list_specs_types       }
+          - map_log_table_spec_cols_data_types      : ${ central_steering_log_tab_infos[7].map_log_table_spec_cols_data_types         }
+          - lst_gwf_exec_specs                      : ${ central_steering_log_tab_infos[8].lst_gwf_exec_specs                         }
+          - map_gwf_exec_specs_cols_data_types      : ${ central_steering_log_tab_infos[9].map_gwf_exec_specs_cols_data_types         }
+
+    - loop_assign_init_map_def_all_with_main_columns:
+        for:
+          value: column_name
+          in: ${ lst_log_table_main_columns }
+          steps:
+            - assign_init_map_def_all_main_columns:
+                assign:
+                  - par_map[ "§" + column_name + "§" ]  : ""
+
+    - loop_assign_init_map_def_all_with_special_columns:
+        for:
+          value: column_name
+          in: ${ lst_log_table_special_columns }
+          steps:
+            - assign_init_map_def_all_special_columns:
+                assign:
+                  - par_map[ "§" + column_name + "§" ]  : ""
+
+    - loop_assign_init_map_def_all_gwf_exec_specs_columns:
+        for:
+          value: column_name
+          in: ${ lst_gwf_exec_specs }
+          steps:
+            - assign_init_map_def_gwf_exec_specs_columns:
+                assign:
+                  - par_map[ "§" + column_name + "§" ]  : ""
+
+    - returnResult:
+        return: ${ par_map }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_logging_insert_head
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_logging_insert_head:
+    params: [ par_map ]
+    steps:
+    - assign_central_steering_log_tab_infos:
+        assign:
+          - special_log_struct_name                 : ${ par_map["§special_log_struct_name§"]                                        }
+          - central_steering_log_tab_infos          : ${ get_central_steering_log_tab_infos( par_map["§special_log_struct_name§"  ] )}
+          - log_table_name_steering                 : ${ central_steering_log_tab_infos[0].log_table_name_steering                   }
+          - log_table_name_process                  : ${ central_steering_log_tab_infos[1].log_table_name_process                    }
+          - lst_log_table_main_columns              : ${ central_steering_log_tab_infos[2].lst_log_table_main_columns                }
+          - lst_todo_entity_list_specs_columns      : ${ central_steering_log_tab_infos[3].lst_todo_entity_list_specs_columns        }
+          - lst_log_table_special_columns           : ${ central_steering_log_tab_infos[4].lst_log_table_special_columns             }
+          - map_log_table_main_cols_data_types      : ${ central_steering_log_tab_infos[5].map_log_table_main_cols_data_types        }
+          - map_gwf_todo_entity_list_specs_types    : ${ central_steering_log_tab_infos[6].map_gwf_todo_entity_list_specs_types      }
+          - map_log_table_spec_cols_data_types      : ${ central_steering_log_tab_infos[7].map_log_table_spec_cols_data_types        }
+          - lst_gwf_exec_specs                      : ${ central_steering_log_tab_infos[8].lst_gwf_exec_specs                        }
+          - map_gwf_exec_specs_cols_data_types      : ${ central_steering_log_tab_infos[9].map_gwf_exec_specs_cols_data_types        }
+          - comma_placeholder                       : "( "
+
+          - ins_sql : ${  "\nINSERT INTO `" + par_map["§META_CURRENT_GCP_PROJECT§"] + "." + par_map["§META_CURRENT_METADATA_GWF_CTRL_DATASET§"] + "." + log_table_name_steering + "` " }
+
+    - loop_build_main_definition_logging_insert_head:
+        for:
+          value: column_name
+          in: ${ lst_log_table_main_columns }
+          steps:
+            - subst_all_patterns:
+                try:
+                  assign:
+                    - ins_sql           : ${ ins_sql + if( ( column_name != par_map["§special_log_struct_name§"] or column_name == par_map["§special_log_struct_name§"] and par_map["§special_log_struct_name§"] != "none" ) ,
+                                                           ("\n" + comma_placeholder + " " + column_name), "" )  }
+                    - comma_placeholder : ", "
+
+                except:
+                    as: e
+                    steps:
+                        - error_loop_build_main_definition_logging_insert_head:
+                            call: sys.log
+                            args:
+                              data: '${ "EXCEPTION-ERROR:Mth-get_logging_insert_head: Empty value for column_name: " + column_name + " error: " +  json.encode_to_string( e )  }'
+                              severity: "ERROR" # Optional
+
+    - returnResult:
+        return: ${ ins_sql + "\n)" }
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_logging_insert_payload
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_logging_insert_payload:
+    params: [ par_map ]
+    steps:
+    - assign_central_steering_log_tab_infos:
+        assign:
+          - central_steering_log_tab_infos          : ${ get_central_steering_log_tab_infos( par_map["§special_log_struct_name§"] )  }
+          - log_table_name_steering                 : ${ central_steering_log_tab_infos[0].log_table_name_steering                   }
+          - log_table_name_process                  : ${ central_steering_log_tab_infos[1].log_table_name_process                    }
+          - lst_log_table_main_columns              : ${ central_steering_log_tab_infos[2].lst_log_table_main_columns                }
+          - lst_todo_entity_list_specs_columns      : ${ central_steering_log_tab_infos[3].lst_todo_entity_list_specs_columns        }
+          - lst_log_table_special_columns           : ${ central_steering_log_tab_infos[4].lst_log_table_special_columns             }
+          - map_log_table_main_cols_data_types      : ${ central_steering_log_tab_infos[5].map_log_table_main_cols_data_types        }
+          - map_gwf_todo_entity_list_specs_types    : ${ central_steering_log_tab_infos[6].map_gwf_todo_entity_list_specs_types      }
+          - map_log_table_spec_cols_data_types      : ${ central_steering_log_tab_infos[7].map_log_table_spec_cols_data_types        }
+          - lst_gwf_exec_specs                      : ${ central_steering_log_tab_infos[8].lst_gwf_exec_specs                        }
+          - map_gwf_exec_specs_cols_data_types      : ${ central_steering_log_tab_infos[9].map_gwf_exec_specs_cols_data_types        }
+          - comma_placeholder                       : " "
+
+          - ins_sql                                 : "\nSELECT"
+
+    - loop_build_definition_logging_insert_payload:
+        for:
+          value: column_name
+          in: ${ lst_log_table_main_columns }
+          steps:
+            - subst_all_patterns:
+                try:
+                    switch:
+                      - condition: ${ column_name != "gwf_todo_entity_list_specs" and column_name != "gwf_exec_specs"  and column_name != par_map["§special_log_struct_name§"] }
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_row_field( comma_placeholder, column_name, map_log_table_main_cols_data_types[column_name], par_map["§" + column_name + "§"] )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: ${ column_name == "gwf_todo_entity_list_specs" }
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_struct_block( comma_placeholder, column_name, lst_todo_entity_list_specs_columns, map_gwf_todo_entity_list_specs_types, par_map )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: ${ column_name == "gwf_exec_specs" }
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_struct_block( comma_placeholder, column_name, lst_gwf_exec_specs                , map_gwf_exec_specs_cols_data_types  , par_map )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: ${ column_name == par_map["§special_log_struct_name§"] and par_map["§special_log_struct_name§"] != "none"  }
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_struct_block( comma_placeholder, column_name, lst_log_table_special_columns    , map_log_table_spec_cols_data_types   , par_map )  }
+                        next: set_comma_placeholder_to_comma
+
+                      - condition: true
+                        assign:
+                          - ins_sql           : ${ ins_sql + get_typed_map_content_4_row_field( comma_placeholder, column_name, map_log_table_main_cols_data_types[column_name], par_map["§" + column_name + "§"] )  }
+                        next: set_comma_placeholder_to_comma
+
+                except:
+                    as: e
+                    steps:
+                        - error_loop_build_definition_logging_insert_payload:
+                            call: sys.log
+                            args:
+                              data: '${ "EXCEPTION-ERROR:Mth-get_logging_insert_payload(main): Empty value for column_name: " + column_name + " error: " +  json.encode_to_string( e )  }'
+                              severity: "ERROR" # Optional
+
+            - set_comma_placeholder_to_comma:
+                assign:
+                  - comma_placeholder : ", "
+
+    - returnResult:
+        return: ${ ins_sql + "\n" }
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_typed_map_content_4_row_field
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_typed_map_content_4_row_field:
+    params: [ p_comma_placeholder, p_column_name, p_column_type, p_column_content ]
+    steps:
+    - assign_helper_vars_get_typed_payload_row:
+        assign:
+          - column_content  : ${ default( p_column_content, "null")  }
+          - column_content  : ${ if( (p_column_type in ["TIMESTAMP", "DATE"] and p_column_content == "" ), "null", column_content)  }
+          - str_delimiter   : ${ if( (p_column_type in ["STRING", "TIMESTAMP", "DATE"] and p_column_content != null ), "'", " ")  }
+          - payload_row     : ${ "\n" + p_comma_placeholder + " CAST(" + str_delimiter + column_content + str_delimiter + " AS " + p_column_type + ") AS " + p_column_name }
+
+    - returnResult:
+        return: ${ payload_row }
+
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+#---- subroutine  get_typed_map_content_4_struct_block
+#----------------------------------------------------------------------------------------------------------------------------------------------------------
+get_typed_map_content_4_struct_block:
+    params: [  p_comma_placeholder, p_struct_name, p_lst_column_names, p_map_column_types, p_map_column_contents ]
+    steps:
+    - init_get_typed_map_content_4_struct_block:
+        assign:
+          - ins_sql                     : ${ "\n" + p_comma_placeholder + " STRUCT(" }
+          - l_comma_placeholder           : "  "
+    
+    
+    - loop_build_typed_struct_payload_block:
+        for:
+          value: column_name
+          in: ${ p_lst_column_names }
+          steps:
+            - subst_all_patterns:
+                try:
+                    assign:
+                    - ins_sql           : ${ ins_sql + get_typed_map_content_4_row_field( l_comma_placeholder, column_name, p_map_column_types[column_name], p_map_column_contents["§" + column_name + "§"] ) }
+                    - l_comma_placeholder : ", "
+
+                except:
+                    as: e
+                    steps:
+                        - debug_info_loop_substitute_pattern_in_string:
+                            call: sys.log
+                            args:
+                              data: 
+                                - ret_msg : '${ "EXCEPTION-ERROR: Mth: get_typed_map_content_4_struct_block failed!!\n" }'
+                                - e       :  ${e}
+                              severity: "ERROR" # Optional
+                        - unhandled_exception_4_loop_build_typed_struct_payload_block: 
+                            raise: ${e}
+
+    - returnResult:
+        return: ${ ins_sql + "\n)           AS " + p_struct_name }
+
+
+
